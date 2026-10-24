@@ -1,0 +1,81 @@
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    platform: linux/amd64
+    environment:
+      POSTGRES_DB: kontrol
+      POSTGRES_USER: kontrol
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-simulation-only}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kontrol -d kontrol"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+  backend:
+    build: ./backend
+    environment: &backend-env
+      DATABASE_URL: postgresql+psycopg://kontrol:${POSTGRES_PASSWORD:-local-simulation-only}@db:5432/kontrol
+      APP_ENV: ${APP_ENV:-development}
+      DEMO_AUTH: ${DEMO_AUTH:-true}
+      CREAO_MODE: ${CREAO_MODE:-live}
+      CREAO_BASE_URL: ${CREAO_BASE_URL:-}
+      CREAO_API_KEY: ${CREAO_API_KEY:-}
+      CREAO_API_VERSION: ${CREAO_API_VERSION:-v1}
+      CREAO_INPUT_FIELD: ${CREAO_INPUT_FIELD:-context}
+      CREAO_TIMEOUT: ${CREAO_TIMEOUT:-180}
+      CREAO_INVOKE_PATH: ${CREAO_INVOKE_PATH:-}
+      CREAO_POLL_PATH: ${CREAO_POLL_PATH:-}
+      CREAO_INTAKE_AGENT_ID: ${CREAO_INTAKE_AGENT_ID:-}
+      CREAO_HOSPITAL_AGENT_ID: ${CREAO_HOSPITAL_AGENT_ID:-}
+      CREAO_DISPATCH_AGENT_ID: ${CREAO_DISPATCH_AGENT_ID:-}
+      CREAO_PLANNING_AGENT_ID: ${CREAO_PLANNING_AGENT_ID:-}
+      LIVE_SIMULATION_ENABLED: ${LIVE_SIMULATION_ENABLED:-false}
+      DEMO_FLEET_ENABLED: ${DEMO_FLEET_ENABLED:-false}
+      MOCK_AGENT_SECONDS: ${MOCK_AGENT_SECONDS:-3}
+      DISPATCH_STAGE_SECONDS: ${DISPATCH_STAGE_SECONDS:-12}
+      WORKER_INTERVAL: ${WORKER_INTERVAL:-1}
+    command: ["sh", "-c", "alembic upgrade head && python -m app.seed && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+  worker:
+    build: ./backend
+    environment: *backend-env
+    command: ["python", "-m", "app.worker"]
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "from app.db import SessionLocal,now; from app.models import Simulation; from sqlalchemy import select; s=SessionLocal().scalar(select(Simulation)); assert s and now().timestamp()-s.worker_heartbeat.timestamp()<150"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+  frontend:
+    build: ./frontend
+    environment:
+      API_INTERNAL_URL: http://backend:8000
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+volumes:
+  postgres_data:

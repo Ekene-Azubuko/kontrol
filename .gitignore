@@ -1,0 +1,14 @@
+.env
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.db
+node_modules/
+.next/
+*.tsbuildinfo
+.DS_Store
+artifacts/
+frontend/test-results/
+frontend/playwright-report/
+frontend/public/maplibre/

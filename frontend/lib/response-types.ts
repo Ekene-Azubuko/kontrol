@@ -1,0 +1,165 @@
+import type { AgentRun, Incident } from "./types";
+export type Requirements = {
+  estimated_patients: number | null;
+  required_response_types: string[];
+};
+export type InventoryItem = {
+  id: string;
+  name: string;
+  category: string;
+  quantity: number;
+  low_stock_threshold: number;
+};
+export type Hospital = {
+  id: string;
+  name: string;
+  location: string;
+  latitude: number;
+  longitude: number;
+  capabilities: string[];
+  total_beds: number | null;
+  occupied_beds: number | null;
+  reserved_beds: number;
+  available_beds: number | null;
+  diversion: boolean;
+  travel_minutes: number | null;
+  inventory: InventoryItem[];
+  source_urls: string[];
+  discovered_by_agent: boolean;
+};
+export type Vehicle = {
+  id: string;
+  call_sign: string;
+  vehicle_type: string;
+  capabilities: string[];
+  patient_capacity: number;
+  status: string;
+  latitude: number;
+  longitude: number;
+  location: string;
+  travel_minutes: number | null;
+  assignment?: Dispatch | null;
+};
+export type Assignment = {
+  id: string;
+  vehicle_id: string;
+  hospital_id: string | null;
+  patients: number | null;
+  reason: string;
+  vehicle_eta_minutes: number;
+  hospital_eta_minutes: number | null;
+  vehicle_eta_method: string;
+  hospital_eta_method: string | null;
+  response_role: string;
+  vehicle: Vehicle;
+  hospital: Hospital | null;
+};
+export type AgentOutput = {
+  summary?: string;
+  constraints?: string[];
+  incident_id?: string;
+  incident_type?: string;
+  reported_injuries?: number | null;
+  required_response_types?: string[];
+  reasoning?: string;
+  limitations?: string[];
+  recommended_actions?: string[];
+  hospitals?: DiscoveredHospital[];
+  recommended_hospitals?: string[];
+  discovered_facilities?: DiscoveredFacility[];
+  recommended_vehicles?: VehicleRecommendation[];
+  unfilled_requirements?: string[];
+  plan_summary?: string;
+  hospital_assignments?: HospitalAssignment[];
+  vehicle_assignments?: VehiclePlanAssignment[];
+  status?: string;
+};
+
+export type DiscoveredHospital = {
+  name: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+  documented_capabilities: string[];
+  available_beds: number | null;
+  diversion_status: boolean | string | null;
+  estimated_travel_minutes: number | null;
+  travel_time_method: string;
+  source_urls: string[];
+  suitability_notes: string;
+};
+export type DiscoveredFacility = {
+  name: string;
+  facility_type: string;
+  address: string;
+  latitude: number | null;
+  longitude: number | null;
+  source_urls: string[];
+};
+export type VehicleRecommendation = {
+  vehicle_id: string;
+  response_role: string;
+  starting_location: string;
+  estimated_arrival_minutes: number | null;
+  reasoning: string;
+};
+export type HospitalAssignment = {
+  hospital_name: string;
+  planned_patient_count: number | null;
+  reasoning: string;
+};
+export type VehiclePlanAssignment = {
+  vehicle_id: string;
+  response_role: string;
+  destination: string;
+  reasoning: string;
+};
+export type ResponsePlan = {
+  id: string;
+  incident_id: string;
+  incident: Incident;
+  report_source: string;
+  status: string;
+  revision: number;
+  revision_note: string;
+  summary: string;
+  requirements: Partial<Requirements>;
+  constraints: string[];
+  feasible: boolean;
+  version: number;
+  created_at: string;
+  approved_at: string | null;
+  completed_at: string | null;
+  decision_note: string | null;
+  assignments: Assignment[];
+  runs: AgentRun[];
+  dispatches: Dispatch[];
+};
+export type Dispatch = {
+  id: string;
+  plan_id: string;
+  incident_id: string;
+  vehicle_id: string;
+  hospital_id: string | null;
+  patients: number;
+  status: string;
+  progress: number;
+  released_at: string | null;
+  origin_latitude: number;
+  origin_longitude: number;
+  vehicle: Vehicle;
+  incident: Incident;
+  hospital: Hospital | null;
+};
+export type Communication = {
+  id: string;
+  plan_id: string;
+  incident_id: string;
+  incident_title: string;
+  recipient: string;
+  recipient_type: string;
+  message: string;
+  status: string;
+  created_at: string;
+  acknowledged_at: string | null;
+};
