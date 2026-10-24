@@ -323,9 +323,16 @@ export function PlanDetail({
     : [];
   async function decide(kind: "approve" | "reject" | "revise") {
     if (!plan) return;
+    const decisionNote = kind === "approve" && note.trim().length < 3
+      ? `Coordinator approved the proposed response with its recorded constraints. ${note.trim()}`.trim()
+      : note.trim();
     const result = await action.act<ResponsePlan>(
       `/response-plans/${plan.id}/decision`,
-      { action: kind, version: plan.version, note },
+      {
+        action: kind,
+        version: plan.version,
+        note: decisionNote,
+      },
       "POST",
       kind === "approve"
         ? "Plan approved. Dispatch has started."
@@ -501,10 +508,10 @@ export function PlanDetail({
                   <p>
                     {plan.feasible
                       ? "Approval reserves the proposed vehicles and hospital beds and adds the response to the live map."
-                      : "Resources are insufficient for a complete plan. You can reject this proposal or request a revision."}
+                      : "You can approve the proposed response with its recorded constraints. Unconfirmed patient counts and bed availability remain pending."}
                   </p>
                   <label>
-                    Decision or revision note
+                    Decision or revision note (optional for approval)
                     <textarea
                       value={note}
                       onChange={(e) => setNote(e.target.value)}
@@ -514,9 +521,7 @@ export function PlanDetail({
                   </label>
                   <div className="decision-actions">
                     <Button
-                      disabled={
-                        action.busy || note.trim().length < 3 || !plan.feasible
-                      }
+                      disabled={action.busy}
                       onClick={() => decide("approve")}
                     >
                       <Check size={16} />

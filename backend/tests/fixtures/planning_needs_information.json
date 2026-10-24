@@ -1,0 +1,72 @@
+
+{
+  "schema_version": "1.0",
+  "incident_id": "373df1db-5414-4ba7-a030-eb9ef73cb566",
+  "incident_type": "vehicle_collision",
+  "location": "Market Street and 8th Street, San Francisco, CA",
+  "plan_summary": "Proposed plan for vehicle_collision at Market Street and 8th Street, San Francisco, CA: two ambulances (6e31944b, e5d00e4b) and two police units (3f9431cd, c93a5166) respond to the scene, with casualty transport routed to Zuckerberg San Francisco General Hospital and Trauma Center as the primary receiving hospital. The plan is submitted for coordinator approval and no unit is dispatched by this artifact.",
+  "hospital_assignments": [
+    {
+      "hospital_name": "Zuckerberg San Francisco General Hospital and Trauma Center",
+      "planned_patient_count": null,
+      "available_beds": null,
+      "reasoning": "Primary receiving hospital: the only Level I trauma center in San Francisco and licensed at the Comprehensive ED service level (HCAI), 6.0 minutes by free-flow road route from the incident. Planned patient count is left null because Kontrol supplied no bed availability (available_beds null) and no per-vehicle patient capacity, so no number is supported."
+    }
+  ],
+  "vehicle_assignments": [
+    {
+      "vehicle_id": "6e31944b-cba7-5a17-8bf4-f79adfa7dc79",
+      "response_role": "ambulance",
+      "destination": "Zuckerberg San Francisco General Hospital and Trauma Center, 1001 Potrero Avenue, San Francisco, CA 94110",
+      "estimated_arrival_minutes": 3.3,
+      "reasoning": "Closest supplied ambulance: Kontrol reports an estimated arrival of 3.3 minutes from SoMa, with advanced life support and patient transport listed for the unit. Assigned as the primary casualty transport to Zuckerberg San Francisco General Hospital and Trauma Center for the one reported injury."
+    },
+    {
+      "vehicle_id": "e5d00e4b-e7e4-5cb6-ab19-3b706b213b81",
+      "response_role": "ambulance",
+      "destination": "Zuckerberg San Francisco General Hospital and Trauma Center, 1001 Potrero Avenue, San Francisco, CA 94110",
+      "estimated_arrival_minutes": 6.4,
+      "reasoning": "Second supplied ambulance: Kontrol reports an estimated arrival of 6.4 minutes from Mission. Assigned as backup casualty transport to the same receiving hospital because the report gives no occupant count for either vehicle, so additional casualties cannot be excluded."
+    },
+    {
+      "vehicle_id": "3f9431cd-957d-550e-9aa8-87ff6f817c0d",
+      "response_role": "police",
+      "destination": "Market Street and 8th Street, San Francisco, CA (incident scene)",
+      "estimated_arrival_minutes": 3.5,
+      "reasoning": "Police unit with a Kontrol estimated arrival of 3.5 minutes from Civic Center. Assigned to the incident scene for traffic control and scene security around two stationary vehicles at a street intersection, as required by the intake result."
+    },
+    {
+      "vehicle_id": "c93a5166-d7e3-5087-9412-ffa69ff029ca",
+      "response_role": "police",
+      "destination": "Market Street and 8th Street, San Francisco, CA (incident scene)",
+      "estimated_arrival_minutes": 6.3,
+      "reasoning": "Police unit with a Kontrol estimated arrival of 6.3 minutes from Hayes Valley. Assigned to the incident scene for traffic control and scene security around two stationary vehicles at a street intersection, as required by the intake result."
+    }
+  ],
+  "unfilled_requirements": [],
+  "constraints": [
+    "No facility has confirmed available beds: the hospital input supplied available_beds null and diversion_status null for all five verified hospitals, so the receiving hospital is not confirmed to be accepting patients.",
+    "The planned patient count cannot be fixed at this time: the report states 1 injured person but gives no occupant count for either vehicle, and no source states ambulance patient capacity.",
+    "Only 2 ambulances and 2 police units were supplied for an incident requiring both, so there is no spare unit in the record set if any one of them is actually committed elsewhere.",
+    "Vehicle arrival estimates are Kontrol free-flow figures with no live traffic or staging delay applied.",
+    "Receiving hospital travel time of 6.0 minutes is a free-flow road-routing duration and excludes ambulance offload delay.",
+    "UCSF Health Hyde Hospital (travel 4.9 minutes, ABA-verified burn center) is held as the contingency destination only if thermal injury is later confirmed; no vehicle is assigned to it in this plan.",
+    "No fire_rescue or rescue unit is assigned: the intake result did not require it and the dispatch record set contained no rescue requirement, so scene extrication capability rests entirely with the two ambulance and two police units assigned."
+  ],
+  "limitations": [
+    "The incident report is an unverified resident account; injury count, injury severity and the absence of hazards are unconfirmed until responders arrive.",
+    "No Kontrol hospital capacity or diversion records were supplied for this incident (hospital_statuses was an empty array).",
+    "No live GPS, AVL or CAD feed was accessed; Kontrol vehicle identifiers, roles and arrival estimates are taken verbatim from the records supplied for this run.",
+    "Hospital service levels are California HCAI licensing attributes and documented capabilities, not confirmation that a service or bed is available now.",
+    "This plan is a proposal for Kontrol coordinator approval; nothing here dispatches a unit or activates a response.",
+    "Hospital finder limitation: The incoming hospital_statuses payload was an empty array, so no facility had Kontrol capacity or diversion data.",
+    "Hospital finder limitation: Estimated travel times are OSRM free-flow driving-route durations and exclude live traffic, construction, road closures and ambulance staging/offload delay.",
+    "Hospital finder limitation: No hospital in the verified set holds a verified pediatric trauma designation.",
+    "Dispatch finder limitation: All distances in the dispatch source are straight-line haversine distances, not driving distance or ETA.",
+    "Dispatch finder limitation: No travel time or arrival estimate was supplied by Kontrol for any vehicle."
+  ],
+  "planned_patient_count": null,
+  "vehicle_assignment_count": 4,
+  "reasoning": "Incident 373df1db-5414-4ba7-a030-eb9ef73cb566 is a reported two-vehicle collision at Market Street and 8th Street, San Francisco, CA with 1 person injured and conscious, requiring ambulance and police response. Both required response types are covered by supplied Kontrol vehicles, so no requirement is recorded as unfilled: ambulances 6e31944b and e5d00e4b arrive in 3.3 and 6.4 minutes respectively, and police units 3f9431cd and c93a5166 in 3.5 and 6.3 minutes. Casualty transport is routed to Zuckerberg San Francisco General Hospital and Trauma Center rather than the nearest ED because it is the only Level I trauma center in the city and holds a Comprehensive HCAI ED licence at a 6.0-minute free-flow drive, which matters for a collision patient who may have occult multi-system trauma. The plan is marked needs_information, not awaiting_approval, because no hospital in the input has confirmed available beds and no planned patient count can be supported without bed or transport-capacity data. Before approval the coordinator should confirm with ZSFG that it is accepting patients and has a bed for the casualty, confirm the actual number of occupants and casualties at the scene, and confirm that the assigned units are still in service and not already committed.",
+  "status": "needs_information"
+}

@@ -50,6 +50,12 @@ For textual results and artifact downloads, the parser also accepts one unambigu
 
 Hospital coordinates, travel times, source URLs, and numeric values are validated. Missing travel estimates fall back to Kontrol's Haversine-based coordinate approximation. Agent-discovered hospital capacity never overwrites operator-confirmed capacity. Dispatch recommendations must reference currently available vehicle IDs already stored in Kontrol.
 
+Intake artifacts may include `limitations` and an optional completion `status` (`complete`, `completed`, or `success`). These fields are validated and retained with the full result; omitted limitations default to an empty list. Other unexpected fields still fail validation.
+
+Planning artifacts may also include `schema_version`, `incident_type`, `location`, `limitations`, `planned_patient_count`, and `vehicle_assignment_count`. Hospital assignments accept nullable `available_beds`; vehicle assignments accept nullable `estimated_arrival_minutes`. Counts and ETAs remain bounded, and these advisory fields never override confirmed capacity or availability. A `needs_information` plan is a completed agent result that remains unapprovable. Its constraints and limitations are shown together in coordinator review.
+
+Hospital discoveries are saved before Planning starts. Planning retries also restore missing hospital records from their already validated upstream findings, without overwriting newer facility facts or operator-owned bed counts. Existing failed Planning runs can therefore reuse their CREAO run and JSON artifact after a schema fix.
+
 ## Failure and approval behavior
 
 Hospital and Dispatch run concurrently. Planning waits for both validated outputs. A failed upstream stage blocks planning until it is recovered. Discovered facilities with unknown coordinates are retained, but omitted from map markers. Plans needing more information appear in the coordinator review queue with approval disabled.

@@ -186,6 +186,24 @@ def test_double_booking_and_hallucinated_resource_rejected(system):
             )
 
 
+def test_constrained_approval_still_rechecks_vehicle_availability(system):
+    """Accepting missing information never grants two incidents the same busy vehicle."""
+    from app.models import ResponsePlan
+
+    client, factory = system
+    plan = generated_plan(client)
+    with factory() as db:
+        stored = db.get(ResponsePlan, plan["id"])
+        stored.status, stored.feasible = "needs_information", False
+        db.get(EmergencyVehicle, plan["assignments"][0]["vehicle_id"]).status = "assigned"
+        db.commit()
+    plan = client.get(f"/response-plans/{plan['id']}", headers=COORDINATOR).json()
+    response = decide(client, plan)
+    assert response.status_code == 409
+    assert "no longer available" in response.json()["detail"]
+    assert client.get("/dispatches", headers=COORDINATOR).json() == []
+
+
 def test_capacity_consumed_between_evaluation_and_planning(system):
     """A newly unavailable fleet produces a constrained plan, without inventing assignments or failing the workflow."""
     client, factory = system

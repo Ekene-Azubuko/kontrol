@@ -287,7 +287,8 @@ class DispatchAssignment(Base):
     incident_id: Mapped[str] = mapped_column(ForeignKey("incidents.id"))
     vehicle_id: Mapped[str] = mapped_column(ForeignKey("emergency_vehicles.id"))
     hospital_id: Mapped[str | None] = mapped_column(ForeignKey("hospitals.id"))
-    patients: Mapped[int]
+    patients: Mapped[int | None]
+    reserved_beds: Mapped[int] = mapped_column(default=0)
     status: Mapped[str] = mapped_column(default="assigned")
     stage_started_at: Mapped[datetime] = mapped_column(default=now)
     origin_latitude: Mapped[float]

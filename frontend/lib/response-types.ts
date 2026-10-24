@@ -55,6 +55,10 @@ export type Assignment = {
   hospital: Hospital | null;
 };
 export type AgentOutput = {
+  schema_version?: string | null;
+  location?: string | null;
+  planned_patient_count?: number | null;
+  vehicle_assignment_count?: number | null;
   summary?: string;
   constraints?: string[];
   incident_id?: string;
@@ -106,12 +110,14 @@ export type VehicleRecommendation = {
 export type HospitalAssignment = {
   hospital_name: string;
   planned_patient_count: number | null;
+  available_beds?: number | null;
   reasoning: string;
 };
 export type VehiclePlanAssignment = {
   vehicle_id: string;
   response_role: string;
   destination: string;
+  estimated_arrival_minutes?: number | null;
   reasoning: string;
 };
 export type ResponsePlan = {
@@ -141,7 +147,8 @@ export type Dispatch = {
   incident_id: string;
   vehicle_id: string;
   hospital_id: string | null;
-  patients: number;
+  patients: number | null;
+  reserved_beds: number;
   status: string;
   progress: number;
   released_at: string | null;

@@ -16,6 +16,8 @@ class IntakeResult(StrictModel):
     reported_injuries: int | None = Field(default=None, ge=0, le=100)
     required_response_types: list[str] = Field(min_length=1, max_length=12)
     reasoning: str = Field(min_length=3, max_length=3000)
+    limitations: list[str] = Field(default_factory=list, max_length=30)
+    status: Literal["complete", "completed", "success"] | None = None
 
 
 class DiscoveredHospital(StrictModel):
@@ -97,6 +99,7 @@ class HospitalAssignment(StrictModel):
 
     hospital_name: str = Field(min_length=2, max_length=200)
     planned_patient_count: int | None = Field(default=None, ge=0, le=100)
+    available_beds: int | None = Field(default=None, ge=0)
     reasoning: str = Field(min_length=3, max_length=3000)
 
 
@@ -106,6 +109,7 @@ class VehicleAssignment(StrictModel):
     vehicle_id: str
     response_role: str = Field(min_length=2, max_length=100)
     destination: str = Field(min_length=2, max_length=300)
+    estimated_arrival_minutes: float | None = Field(default=None, ge=0, le=1440)
     reasoning: str = Field(min_length=3, max_length=3000)
 
 
@@ -113,11 +117,17 @@ class PlanningResult(StrictModel):
     """Combine validated agent findings into a human-reviewable proposal."""
 
     incident_id: str
+    schema_version: str | None = Field(default=None, min_length=1, max_length=20)
+    incident_type: str | None = Field(default=None, min_length=2, max_length=100)
+    location: str | None = Field(default=None, min_length=2, max_length=300)
     plan_summary: str = Field(min_length=10, max_length=3000)
     hospital_assignments: list[HospitalAssignment] = Field(default_factory=list, max_length=20)
     vehicle_assignments: list[VehicleAssignment] = Field(default_factory=list, max_length=30)
     unfilled_requirements: list[str] = Field(default_factory=list, max_length=30)
     constraints: list[str] = Field(default_factory=list, max_length=30)
+    limitations: list[str] = Field(default_factory=list, max_length=30)
+    planned_patient_count: int | None = Field(default=None, ge=0, le=100)
+    vehicle_assignment_count: int | None = Field(default=None, ge=0, le=30)
     reasoning: str = Field(min_length=3, max_length=4000)
     status: Literal["awaiting_approval", "needs_information"]
 

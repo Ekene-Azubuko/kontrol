@@ -15,6 +15,7 @@ RESULTS = {
         "summary": "Two cars collided and no injuries were reported.",
         "reported_injuries": 0, "required_response_types": ["police"],
         "reasoning": "Traffic control is needed.",
+        "limitations": [], "status": None,
     },
     "hospital": {
         "incident_id": "incident-1", "hospitals": [], "recommended_hospitals": [],
@@ -27,6 +28,8 @@ RESULTS = {
     },
     "planning": {
         "incident_id": "incident-1", "plan_summary": "Await a police unit for traffic control.",
+        "schema_version": None, "incident_type": None, "location": None,
+        "limitations": [], "planned_patient_count": None, "vehicle_assignment_count": None,
         "hospital_assignments": [], "vehicle_assignments": [],
         "unfilled_requirements": ["police"], "constraints": ["No available unit"],
         "reasoning": "An available police vehicle is required.", "status": "needs_information",
@@ -84,3 +87,51 @@ def test_fenced_artifact_still_requires_strict_stage_schema(stage):
     invalid = {**RESULTS[stage], "invented_field": "not in contract"}
     with pytest.raises(ValidationError):
         download_result(stage, f"Result:\n```json\n{json.dumps(invalid)}\n```\nDone.")
+
+
+def test_intake_prefers_full_artifact_and_preserves_limitations():
+    """Accept the observed Intake metadata instead of using the provider's incomplete summary."""
+    artifact = {
+        "incident_id": "ad37b805-68bf-4890-b520-9fc63c3361c0",
+        "incident_type": "vehicle_collision",
+        "summary": "Two vehicles collided at Market Street and 8th Street. One person is injured and conscious.",
+        "reported_injuries": 1,
+        "required_response_types": ["ambulance", "police"],
+        "reasoning": "One reported injury requires medical evaluation; the collision requires traffic control.",
+        "limitations": [
+            "The report is an unverified resident account.",
+            "The severity of the injury is not stated beyond the person being conscious.",
+        ],
+        "status": "complete",
+    }
+    downloads = []
+
+    def download(request: httpx.Request) -> httpx.Response:
+        """Return the full artifact while the inline result deliberately lacks required fields."""
+        downloads.append(request.url.path)
+        return httpx.Response(200, json=artifact)
+
+    with httpx.Client(base_url="https://agent.creao.ai", transport=httpx.MockTransport(download)) as client:
+        result = validate_completed_result("intake", {
+            "text": json.dumps({
+                "incident_id": artifact["incident_id"],
+                "incident_type": "vehicle_collision",
+                "reported_injuries": 1,
+                "required_response_types": "ambulance, police",
+                "status": "complete",
+            }),
+            "chatText": "All required inputs are present. Building and validating the artifact.",
+            "artifacts": [{
+                "type": "application/json",
+                "title": "Incident ad37b805 — Kontrol Intake",
+                "url": "https://agent.creao.ai/artifacts/incident.json",
+            }],
+        }, client)
+    assert downloads == ["/artifacts/incident.json"]
+    assert result.model_dump() == artifact
+
+
+def test_intake_does_not_treat_failure_status_as_completed_output():
+    """An optional completion marker cannot turn an agent-declared failure into a valid result."""
+    with pytest.raises(ValidationError):
+        download_result("intake", json.dumps({**RESULTS["intake"], "status": "failed"}))

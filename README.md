@@ -59,6 +59,8 @@ These are CREAO's currently documented and observed API Trigger routes. Although
 
 Hospital Finder may discover facilities independently. Kontrol stores their documented identity, coordinates, capabilities, and sources, but never treats agent-reported capacity as authoritative. Dispatch Finder may discover station locations, but can recommend only available vehicles already present in Kontrol. Historical seeded resources remain available only in mock mode, except for the explicitly enabled hackathon fleet described below.
 
+Response Planner artifacts retain their metadata, nullable patient counts, vehicle ETAs, and limitations. A completed plan marked `needs_information` appears for coordinator review with approval disabled; it is not an agent execution failure. Hospital discoveries are persisted before planning, and retries recover missing destinations from validated upstream results. See [backend/CREAO.md](backend/CREAO.md) for the supported output contracts.
+
 Do not present fictional facilities or units as operational resources. Replace the bootstrap resource records with verified hospital and vehicle data before a real deployment.
 
 ## Architecture

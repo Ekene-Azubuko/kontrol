@@ -8,6 +8,7 @@ from sqlalchemy import case, select
 from .config import settings
 from .demo_fleet import vehicle_enabled
 from .creao import get_adapter
+from .hospital_discovery import store_discovered_hospitals
 from .db import SessionLocal, now
 from .models import (
     AgentFinding,
@@ -154,6 +155,8 @@ def finish_stage(db, run: AgentRun, output: dict) -> None:
                 recommendation["estimated_arrival_minutes"] = vehicle_lookup[
                     recommendation["vehicle_id"]
                 ]["travel_minutes"]
+    if run.stage == "hospital":
+        store_discovered_hospitals(db, output["hospitals"])
     run.output, run.status, run.completed_at, run.error = output, "completed", now(), None
     db.add(AgentFinding(run_id=run.id, incident_id=run.incident_id, assessment=output))
     if run.stage == "intake":
@@ -179,40 +182,14 @@ def finish_stage(db, run: AgentRun, output: dict) -> None:
     elif run.stage in {"hospital", "dispatch"}:
         db.flush()
         queue_planning_if_ready(db, run, incident)
-    elif run.stage == "hospital":
-        for hospital in output["hospitals"]:
-            existing = db.scalar(
-                select(Hospital).where(
-                    Hospital.name.ilike(hospital["name"]),
-                    Hospital.location.ilike(hospital["address"]),
-                )
-            )
-            if existing:
-                existing.latitude = hospital["latitude"]
-                existing.longitude = hospital["longitude"]
-                existing.capabilities = hospital["documented_capabilities"]
-                existing.source_urls = hospital["source_urls"]
-            else:
-                db.add(
-                    Hospital(
-                        name=hospital["name"],
-                        location=hospital["address"],
-                        latitude=hospital["latitude"],
-                        longitude=hospital["longitude"],
-                        capabilities=hospital["documented_capabilities"],
-                        total_beds=None,
-                        occupied_beds=None,
-                        baseline_occupied=None,
-                        diversion=False,
-                        simulation=False,
-                        source_urls=hospital["source_urls"],
-                        discovered_by_agent=True,
-                    )
-                )
     elif run.stage == "planning":
         plan.summary = output["plan_summary"]
         plan.feasible = output["status"] == "awaiting_approval" and not output["unfilled_requirements"]
-        plan.constraints = output["constraints"] + output["unfilled_requirements"]
+        plan.constraints = list(dict.fromkeys(
+            output["constraints"] + output.get("limitations", []) + output["unfilled_requirements"]
+        ))
+        # Older completed Hospital jobs may predate discovery persistence; recover missing destinations on retry.
+        store_discovered_hospitals(db, run.input["findings"]["hospital"].get("hospitals", []), refresh_existing=False)
         hospital_query = select(Hospital)
         if settings.creao_mode == "live":
             hospital_query = hospital_query.where(Hospital.simulation.is_(False))

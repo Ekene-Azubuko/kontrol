@@ -63,9 +63,11 @@ def dispatch_tick(db: Session, current: datetime | None = None) -> None:
         if assignment.status == "completed":
             assignment.completed_at = current
             if hospital:
-                # Reserved beds become occupied only at arrival, under the same transaction.
-                hospital.reserved_beds -= assignment.patients
-                hospital.occupied_beds += assignment.patients
+                # Only a real reservation changes capacity; constrained approvals may have unknown counts.
+                if assignment.reserved_beds:
+                    hospital.reserved_beds -= assignment.reserved_beds
+                    hospital.occupied_beds += assignment.reserved_beds
+                    assignment.reserved_beds = 0
                 vehicle.location = hospital.location
                 db.add(
                     CommunicationLog(
@@ -73,7 +75,10 @@ def dispatch_tick(db: Session, current: datetime | None = None) -> None:
                         incident_id=incident.id,
                         recipient=hospital.name,
                         recipient_type="hospital",
-                    message=f"{vehicle.call_sign} arrived with {assignment.patients} patient(s). Hospital capacity updated.",
+                        message=f"{vehicle.call_sign} arrived; patients: "
+                        f"{assignment.patients if assignment.patients is not None else 'unconfirmed'}."
+                        + (" Hospital capacity remains unconfirmed."
+                           if hospital.occupied_beds is None else ""),
                         status="acknowledged",
                         acknowledged_at=current,
                     )

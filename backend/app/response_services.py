@@ -59,9 +59,10 @@ def create_plan(
 
 
 def validate_assignments(
-    requirements: dict, assignments: list[dict], hospital_rows: list[dict], vehicle_rows: list[dict]
+    requirements: dict, assignments: list[dict], hospital_rows: list[dict], vehicle_rows: list[dict],
+    *, allow_incomplete: bool = False,
 ) -> None:
-    """Reject fabricated IDs, over-allocation, unavailable resources and missing capabilities."""
+    """Recheck resource integrity while allowing a coordinator to accept unresolved planning information."""
     expected_patients = requirements.get("estimated_patients")
     hospital_lookup = {h["id"]: h for h in hospital_rows}
     vehicle_lookup = {v["id"]: v for v in vehicle_rows}
@@ -76,14 +77,14 @@ def validate_assignments(
         if vehicle["status"] != "available" or vehicle["assignment"]:
             raise ValueError(f"Vehicle {vehicle['call_sign']} is no longer available")
         patients = proposal["patients"]
-        if patients is None:
+        if patients is None and not allow_incomplete:
             raise ValueError("Patient allocation must be confirmed before approval")
-        if patients < 0 or patients > vehicle["patient_capacity"]:
+        if patients is not None and (patients < 0 or patients > vehicle["patient_capacity"]):
             raise ValueError("Vehicle patient capacity exceeded")
         if patients and "patient_transport" not in vehicle["capabilities"]:
             raise ValueError("Vehicle cannot transport patients")
         hospital_id = proposal["hospital_id"]
-        if bool(patients) != bool(hospital_id):
+        if not allow_incomplete and bool(patients) != bool(hospital_id):
             raise ValueError("Patient transport requires a receiving hospital")
         if hospital_id:
             if hospital_id not in hospital_lookup:
@@ -91,16 +92,16 @@ def validate_assignments(
             hospital = hospital_lookup[hospital_id]
             if hospital["diversion"]:
                 raise ValueError("Receiving hospital is diverted")
-            if hospital["available_beds"] is None:
+            if hospital["available_beds"] is None and not allow_incomplete:
                 raise ValueError("Receiving hospital capacity has not been confirmed")
-            beds[hospital_id] += patients
-            if beds[hospital_id] > hospital["available_beds"]:
+            beds[hospital_id] += patients or 0
+            if hospital["available_beds"] is not None and beds[hospital_id] > hospital["available_beds"]:
                 raise ValueError(f"Insufficient available beds at {hospital['name']}")
         used.add(vehicle_id)
-        total_patients += patients
+        total_patients += patients or 0
     if not assignments:
         raise ValueError("At least one vehicle assignment is required")
-    if expected_patients is not None and total_patients != expected_patients:
+    if not allow_incomplete and expected_patients is not None and total_patients != expected_patients:
         raise ValueError("Assignments must cover the reported patient count")
 
 
@@ -168,8 +169,7 @@ def decide_plan(db: Session, plan_id: str, user: User, decision: PlanDecision) -
             create_plan(db, incident, db.get(Report, plan.report_id), decision.note)
             update_response_status(db, incident, "generating")
     else:
-        if plan.status != "awaiting_approval" or not plan.feasible:
-            raise HTTPException(409, "This plan is not feasible; review constraints and request a revision")
+        incomplete = plan.status == "needs_information" or not plan.feasible
         proposals = list(db.scalars(select(ProposedAssignment).where(ProposedAssignment.plan_id == plan.id)))
         # Lock in a fixed order, rechecking current capacity rather than trusting the earlier agent snapshot.
         fleet = {
@@ -186,6 +186,7 @@ def decide_plan(db: Session, plan_id: str, user: User, decision: PlanDecision) -
                 ],
                 hospitals(db, incident),
                 [v for v in vehicles(db, incident) if vehicle_enabled(v["id"], v["simulation"])],
+                allow_incomplete=incomplete,
             )
         except ValueError as exc:
             raise HTTPException(409, f"Resources changed: {exc}. Request a revised plan.") from None
@@ -195,6 +196,14 @@ def decide_plan(db: Session, plan_id: str, user: User, decision: PlanDecision) -
         for proposal in proposals:
             vehicle = fleet[proposal.vehicle_id]
             vehicle.status = "assigned"
+            hospital = network.get(proposal.hospital_id)
+            # Approval authorizes response; it does not confirm unknown patients or hospital capacity.
+            reserved_beds = (
+                proposal.patients
+                if hospital and hospital.total_beds is not None and hospital.occupied_beds is not None
+                and proposal.patients is not None
+                else 0
+            )
             db.add(
                 DispatchAssignment(
                     plan_id=plan.id,
@@ -202,6 +211,7 @@ def decide_plan(db: Session, plan_id: str, user: User, decision: PlanDecision) -
                     vehicle_id=vehicle.id,
                     hospital_id=proposal.hospital_id,
                     patients=proposal.patients,
+                    reserved_beds=reserved_beds,
                     origin_latitude=vehicle.latitude,
                     origin_longitude=vehicle.longitude,
                 )
@@ -213,12 +223,14 @@ def decide_plan(db: Session, plan_id: str, user: User, decision: PlanDecision) -
                     incident_id=incident.id,
                     recipient=vehicle.call_sign,
                     recipient_type="responder",
-                message=f"Approved response assignment to {incident.location}; {proposal.patients} patient(s); destination: {destination}.",
+                    message=f"Approved response assignment to {incident.location}; "
+                    f"patients: {proposal.patients if proposal.patients is not None else 'unconfirmed'}; "
+                    f"destination: {destination}.",
                 )
             )
-            if proposal.hospital_id:
-                network[proposal.hospital_id].reserved_beds += proposal.patients
-                receiving[proposal.hospital_id] += proposal.patients
+            if proposal.hospital_id and reserved_beds:
+                network[proposal.hospital_id].reserved_beds += reserved_beds
+                receiving[proposal.hospital_id] += reserved_beds
         for hospital_id, patients in receiving.items():
             db.add(
                 CommunicationLog(
@@ -243,7 +255,9 @@ def decide_plan(db: Session, plan_id: str, user: User, decision: PlanDecision) -
             user_id=user.id,
             incident_id=incident.id,
             action=f"plan_{decision.action}",
-            details=f"Plan revision {plan.revision}: {decision.note}",
+            details=f"Plan revision {plan.revision}: {decision.note}"
+            + (f" Unresolved constraints accepted: {'; '.join(plan.constraints)}"
+               if decision.action == "approve" and not plan.feasible else ""),
         )
     )
     db.flush()
