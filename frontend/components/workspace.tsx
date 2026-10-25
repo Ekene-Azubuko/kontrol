@@ -144,6 +144,10 @@ export function Workspace({ role, page }: { role: Role; page: string }) {
             <Bell size={17} />
           </div>
         </header>
+        <div className="simulation-banner" role="note">
+          SIMULATION (NOT FOR EMERGENCY USE)
+          <span>Fictional recordings · Simulated resource assignments</span>
+        </div>
         {auth.role === role && (
           <>
             <LiveUpdates />

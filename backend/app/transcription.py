@@ -48,7 +48,7 @@ class MockTranscription:
         """Fail clearly unless the recording was injected from a known sample."""
         if sample_key not in SAMPLES:
             raise TranscriptionError(
-                "Mock transcription supports bundled samples only. Load a sample or enable live transcription."
+                "Transcription supports bundled samples only in mock mode. Load a sample or enable live transcription."
             )
         return TranscriptResult(text=SAMPLES[sample_key].transcript)
 
