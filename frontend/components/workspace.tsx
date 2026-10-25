@@ -1,11 +1,10 @@
 "use client";
 import Link from "next/link";
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import {
-  Activity,
   Bell,
   Bot,
-  ChevronDown,
   ChevronLeft,
   CircleHelp,
   Flame,
@@ -52,11 +51,18 @@ export function Workspace({ role, page }: { role: Role; page: string }) {
         <Link
           href="/coordinator/overview"
           className="brand"
+          aria-label="Kontrol Command Center"
         >
           <span className="brand-mark">
-            <Activity size={23} />
+            <Image
+              src="/brand/kontrol-logo.png"
+              width={832}
+              height={544}
+              alt=""
+              unoptimized
+            />
           </span>
-          <span>
+          <span className="brand-copy">
             {branding.product.toUpperCase()}
             <small>EMERGENCY INTELLIGENCE</small>
           </span>
@@ -68,22 +74,25 @@ export function Workspace({ role, page }: { role: Role; page: string }) {
         >
           <X />
         </button>
-        <div className="workspace-switch">
-          <span className="workspace-avatar">SF</span>
-          <div>
-            <strong>{interfaceName}</strong>
-            <small>Dispatcher exercise workspace</small>
+        <div className="sidebar-context">
+          <div className="sidebar-context-inner">
+            <div className="workspace-switch">
+              <span className="workspace-avatar">SF</span>
+              <div>
+                <strong>{interfaceName}</strong>
+                <small>Dispatcher exercise workspace</small>
+              </div>
+            </div>
+            <div className="nav-label">OPERATIONS</div>
           </div>
-          <ChevronDown size={14} />
-        </div>
-        <div className="nav-label">
-          OPERATIONS
         </div>
         <nav>
           {links.map(({ slug, label, icon: Icon }) => (
             <Link
               key={slug}
               href={`/${role}/${slug}`}
+              aria-label={label}
+              title={label}
               className={page === slug ? "active" : ""}
               onClick={() => setMobile(false)}
             >
@@ -96,6 +105,8 @@ export function Workspace({ role, page }: { role: Role; page: string }) {
         <div className="sidebar-bottom">
           <button
             className="collapse-control"
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             onClick={() => setCollapsed(!collapsed)}
           >
             <ChevronLeft size={16} />
@@ -105,11 +116,9 @@ export function Workspace({ role, page }: { role: Role; page: string }) {
             <div className="avatar">KD</div>
             <div>
               <strong>Operations desk</strong>
-              <small>
-                Dispatcher
-              </small>
+              <small>Dispatcher</small>
             </div>
-              <CircleHelp size={16} />
+            <CircleHelp size={16} />
           </div>
         </div>
       </aside>
@@ -124,19 +133,21 @@ export function Workspace({ role, page }: { role: Role; page: string }) {
               <Menu size={20} />
             </button>
             <span className="breadcrumb">
-              {interfaceName} <span>/</span>{" "}
+              {interfaceName} <span aria-hidden="true">•••</span>{" "}
               <strong>{links.find((item) => item.slug === page)?.label}</strong>
             </span>
           </div>
           <div className="topbar-right">
-            <span className="scenario-pill"><span className="live-dot" /> SIMULATION</span>
             <span className="clock">
               {clock || "—"} <small>LOCAL</small>
             </span>
             <Bell size={17} />
           </div>
         </header>
-        <div className="simulation-banner" role="note">SIMULATION (NOT FOR EMERGENCY USE) · Fictional recordings and simulated resource assignments</div>
+        <div className="simulation-banner" role="note">
+          SIMULATION (NOT FOR EMERGENCY USE)
+          <span>Fictional recordings · Simulated resource assignments</span>
+        </div>
         {auth.role === role && (
           <>
             <LiveUpdates />
@@ -152,7 +163,6 @@ export function Workspace({ role, page }: { role: Role; page: string }) {
           </span>
         </footer>
       </main>
-
     </div>
   );
 }

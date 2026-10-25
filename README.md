@@ -2,7 +2,7 @@
 
 **SIMULATION (NOT FOR EMERGENCY USE)**
 
-Kontrol is a simulated 911 dispatcher co-pilot. Load a fictional recorded call, let Kontrol locate the incident from the transcript, and select a call type before four agents draft a response. A dispatcher must approve the plan before simulated resources move. No real dispatch messages are sent.
+Kontrol is a simulated 911 dispatcher co-pilot. Load a recorded call, let Kontrol locate the incident from the transcript, and select a call type before four agents draft a response. A dispatcher must approve the plan before simulated resources move. No real dispatch messages are sent.
 
 ## Run locally
 
@@ -17,6 +17,8 @@ Open [Kontrol Command](http://localhost:3000/coordinator/calls). Load a sample c
 Before starting agents, use **Edit address** to correct a street address, intersection, or exercise landmark, then select **Find location again**. The same button also retries the current lookup without editing. Successful lookups replay the city zoom and pin drop, including when the coordinates are unchanged. An unresolved correction removes the previous pin and keeps Start agents disabled. The original transcript and audio stay intact; address edits and lookup results are audited. Editing is unavailable after agents have started.
 
 To rerun an unapproved response, select **Back to call type** in the recording or response-plan review. This returns the same recording to the call-type form with its transcript and detected location intact. Choose a type and select **Start agents** to create a fresh workflow with new CREAO execution IDs. Returning alone makes no provider request. Previous reports, plans, outputs and errors remain in history; unfinished local stages are cancelled and late results are ignored. Approved or dispatched responses cannot be reopened. **Retry failed stage** in Agent Operations still resumes the existing remote execution and serves a different purpose.
+
+To remove an uploaded or sample recording, select it in Recorded Calls and choose **Delete recording**, then **Delete permanently**. This removes the private audio and call-queue entry. Existing reports, response plans, agent jobs, assignments and communication history remain; deletion does not cancel an ongoing response. Deletion is dispatcher-only, version-checked and audited. In-flight transcription results are discarded. If storage cleanup fails, the recording is immediately inaccessible and the worker retries file removal from a durable deletion marker.
 
 Both `CREAO_MODE=mock` and `TRANSCRIPTION_MODE=mock` work without credentials. Existing `.env` files retain their previous settings; set these two values to `mock` to run the credential-free exercise. Migrations and idempotent bootstrap run automatically. New installations start with an empty call queue and a fictional hospital/fleet network. Bundled audio needs no generation step.
 
@@ -88,7 +90,7 @@ Set live credentials only in environment variables. Update the published CREAO I
 
 Hospital and Dispatch already run in parallel. Live latency is usually dominated by remote agent execution, especially repeated facility research and lengthy outputs. Two-second polling reduces completion handoff delay, but the larger improvement requires changes to the published CREAO agents. [Reducing live agent latency](backend/CREAO_PERFORMANCE.md) provides copyable instructions for concise output, supplied-data-only Intake/Dispatch/Planning, and focused Hospital research. Repository changes do not republish external agents. Apply configuration changes with `docker compose up --build -d backend worker` when no agents are running.
 
-Three fictional scripts and spoken recordings ship in `backend/app/fixtures/calls`. Each starts with a simulation notice. Maintainers can regenerate the bundled 16 kHz mono WAVs on macOS with `python3 backend/scripts/generate_call_audio.py` (requires `say` and FFmpeg); users do not need these host tools. Audio persists alongside the database until the local exercise volumes are explicitly removed. Demo reset preserves historical call/audio/review records, cancels exercise work, and invalidates transcription claims; load a new sample afterward.
+Three fictional scripts and spoken recordings ship in `backend/app/fixtures/calls`. Each starts with a simulation notice. Maintainers can regenerate the bundled 16 kHz mono WAVs on macOS with `python3 backend/scripts/generate_call_audio.py` (requires `say` and FFmpeg); users do not need these host tools. Audio persists alongside the database until its recording is deleted or the local exercise volumes are explicitly removed. Demo reset preserves historical call/audio/review records, cancels exercise work, and invalidates transcription claims; load a new sample afterward.
 
 ## Checks
 
@@ -124,3 +126,9 @@ Use the configured PostgreSQL password if different from the example. These test
 This version processes completed recordings, not live calls. That sequencing is a demo choice, not a model of a particular emergency center's procedures. It does not provide medical instructions, validated emergency addresses, real caller location, CAD integration, or real dispatch. Vehicle movement and ETAs are illustrative coordinate calculations. Hospital destinations are advisory and do not establish patient disposition or verified capacity.
 
 The application is for trusted local fictional exercises. Real recordings, production authentication, retention/deletion policy, center-specific protocols, and external integrations require a separate operational-pilot design. No fictional data should be used for real-world emergency guidance.
+
+### Startup animation
+
+A white loading screen appears once per full page load, with a moving fire truck, a progress bar, and KONTROL beneath it. It observes font and initial workspace-query readiness, allows immediate entry via **Enter workspace**, and automatically exits after at most 6.5 seconds plus the fade. Sidebar navigation does not replay it. Reduced-motion preferences skip the animation.
+
+The animated truck is a bundled vector illustration; the intro requires no external model, third-party requests, or WebGL. The progress bar represents workspace preparation.

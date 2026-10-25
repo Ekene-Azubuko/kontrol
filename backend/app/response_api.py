@@ -48,7 +48,7 @@ def plan_record(db, plan: ResponsePlan) -> dict:
         **record(plan),
         "incident": record(db.get(Incident, plan.incident_id)),
         "report_source": db.get(Report, plan.report_id).source,
-        "call": (call_record(db, call) if (call := db.scalar(select(Call).where(Call.report_id == plan.report_id))) else None),
+        "call": (call_record(db, call) if (call := db.scalar(select(Call).where(Call.report_id == plan.report_id, Call.status != "deleted"))) else None),
         "assignments": assignments,
         "runs": [
             record(r)

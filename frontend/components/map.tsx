@@ -20,7 +20,7 @@ const sanFranciscoBounds: [[number, number], [number, number]] = [
   [-122.525, 37.705],
   [-122.35, 37.825],
 ];
-const basemapStyle = "https://tiles.openfreemap.org/styles/dark";
+const basemapStyle = "https://tiles.openfreemap.org/styles/positron";
 
 /** Overlay approved operational records on San Francisco's real streets and geography. */
 export function IncidentMap({

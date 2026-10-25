@@ -303,7 +303,7 @@ test("fictional upload without automatic location fails clearly in mock mode and
   });
   expect((await uploaded).status()).toBe(201);
   await expect(page.locator(".error[role=alert]")).toContainText(
-    "Mock transcription supports bundled samples only",
+    "Transcription supports bundled samples only",
     { timeout: 30000 },
   );
   const retried = page.waitForResponse((response) =>
@@ -312,7 +312,7 @@ test("fictional upload without automatic location fails clearly in mock mode and
   await page.getByRole("button", { name: "Retry transcription" }).click();
   expect((await retried).status()).toBe(200);
   await expect(page.locator(".error[role=alert]")).toContainText(
-    "Mock transcription supports bundled samples only",
+    "Transcription supports bundled samples only",
     { timeout: 30000 },
   );
 });

@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from sqlalchemy import select
 
 from .call_audio import audio_path, save_upload
+from .call_delete import DeleteCall, cleanup_deleted_calls, mark_call_deleted
 from .call_reopen import ReopenCall, reopen_call
 from .call_services import (
     CallerLocation,
@@ -110,24 +111,41 @@ def calls(db: DB, user: Coordinator):
     """Return a bounded private queue in newest-first order."""
     return [
         call_record(db, call)
-        for call in db.scalars(select(Call).order_by(Call.received_at.desc()).limit(100))
+        for call in db.scalars(select(Call).where(Call.status != "deleted")
+                               .order_by(Call.received_at.desc()).limit(100))
     ]
 
 
 @router.get("/{call_id}")
 def call_detail(call_id: str, db: DB, user: Coordinator):
     """Return original and reviewed text only to dispatchers."""
-    return call_record(db, require_record(db, Call, call_id))
+    call = require_record(db, Call, call_id)
+    if call.status == "deleted":
+        raise HTTPException(404, "Recording not found")
+    return call_record(db, call)
 
 
 @router.get("/{call_id}/audio")
 def call_audio(call_id: str, db: DB, user: Coordinator):
     """Serve authenticated audio without exposing private storage paths."""
     call = require_record(db, Call, call_id)
+    if call.status == "deleted":
+        raise HTTPException(404, "Recording not found")
     path = audio_path(call.audio_key)
     if not path.is_file():
         raise HTTPException(404, "Recording not found")
     return FileResponse(path, media_type=call.audio_content_type, headers={"Cache-Control": "no-store"})
+
+
+@router.delete("/{call_id}")
+def delete_recording(call_id: str, data: DeleteCall, db: DB, user: Coordinator):
+    """Remove a recording and queue entry while retaining reports, plans and assignments."""
+    mark_call_deleted(db, call_id, user, data)
+    # Persist denial of access and the revoked claim before irreversible filesystem cleanup.
+    db.commit()
+    pending = cleanup_deleted_calls(db, call_id)
+    db.commit()
+    return {"id": call_id, "deleted": True, "cleanup_pending": pending}
 
 
 @router.post("/{call_id}/confirm-review")
