@@ -6,6 +6,9 @@ import "@fontsource-variable/inter";
 import "./globals.css";
 export const metadata: Metadata = {
   title: branding.applicationTitle,
+  icons: {
+    icon: { url: "/brand/kontrol-logo.png", type: "image/png" },
+  },
   description:
     "SIMULATION (NOT FOR EMERGENCY USE). Recorded-call dispatcher co-pilot.",
 };

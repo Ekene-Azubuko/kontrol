@@ -129,7 +129,7 @@ test("sample call → animated location → call type → agents → approval �
     ).ok(),
   ).toBeTruthy();
   await page.goto("/coordinator/calls");
-  await expect(page.getByRole("note")).toContainText(
+  await expect(page.locator("footer")).toContainText(
     "SIMULATION (NOT FOR EMERGENCY USE)",
   );
   const created = page.waitForResponse(
@@ -337,7 +337,7 @@ test("dispatcher navigation and retired resident routes", async ({ page }) => {
   ]) {
     await page.goto(`/coordinator/${route}`);
     await expect(page.locator(".page-heading h1")).toBeVisible();
-    await expect(page.getByRole("note")).toContainText(
+    await expect(page.locator("footer")).toContainText(
       "SIMULATION (NOT FOR EMERGENCY USE)",
     );
     expect(

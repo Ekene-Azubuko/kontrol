@@ -193,7 +193,7 @@ export function Calls() {
           <p>Upload audio or start with a sample call.</p>
         </div>
         <label className="audio-upload">
-          <span>Upload fictional audio (WAV, MP3, WebM, Ogg)</span>
+          <span>Upload audio (WAV, MP3, WebM, Ogg)</span>
           <input
             type="file"
             accept="audio/wav,audio/mpeg,audio/webm,audio/ogg"
