@@ -7,6 +7,7 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from .call_audio import audio_path
+from .call_delete import cleanup_deleted_calls
 from .call_location import detect_location
 from .config import settings
 from .db import SessionLocal, now
@@ -30,6 +31,7 @@ def process_one_call() -> bool:
     """Claim in a short transaction and call the provider without holding database locks."""
     with SessionLocal() as db:
         operation_lock(db)
+        cleanup_deleted_calls(db)
         recover_expired_calls(db)
         call = db.scalar(
             select(Call)

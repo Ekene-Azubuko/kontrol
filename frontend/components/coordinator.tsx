@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Activity,
   Ambulance,
@@ -72,11 +72,11 @@ function CommandWorkspace({ register }: { register: boolean }) {
   const dispatches = useData<Dispatch[]>("/dispatches");
   const activity = useData<ActivityRecord[]>("/activity");
   const [selected, setSelected] = useState<string | null>(null);
+  // Live queue updates must not open a review drawer without a dispatcher click.
   const [planId, setPlanId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
   const [mapResponse, setMapResponse] = useState("all");
-  const offeredPlans = useRef(new Set<string>());
   const action = useAction();
   const active = (incidents.data || []).filter(
     (i) => !["completed", "cancelled", "rejected"].includes(i.response_status),
@@ -115,12 +115,6 @@ function CommandWorkspace({ register }: { register: boolean }) {
   const visibleVehicleIds = new Set(
     visibleDispatches.map((dispatch) => dispatch.vehicle_id),
   );
-  useEffect(() => {
-    const next = awaiting.find((plan) => !offeredPlans.current.has(plan.id));
-    if (!next) return;
-    offeredPlans.current.add(next.id);
-    setPlanId(next.id);
-  }, [awaiting]);
   const rows = (incidents.data || []).filter(
     (i) =>
       `${i.title} ${i.location}`.toLowerCase().includes(search.toLowerCase()) &&

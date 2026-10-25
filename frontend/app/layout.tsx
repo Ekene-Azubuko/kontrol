@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Providers } from "@/lib/api";
 import { branding } from "@/lib/branding";
+import { StartupScreen } from "@/components/startup-screen";
 import "@fontsource-variable/inter";
 import "./globals.css";
 export const metadata: Metadata = {
@@ -17,7 +18,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <Providers>{children}</Providers>
+        <Providers>
+          <StartupScreen>{children}</StartupScreen>
+        </Providers>
       </body>
     </html>
   );

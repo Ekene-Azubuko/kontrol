@@ -81,6 +81,7 @@ def test_review_is_atomic_unique_and_provenanced(system):
         ("POST", "/calls/sample/fire"),
         ("GET", "/calls/{id}"),
         ("GET", "/calls/{id}/audio"),
+        ("DELETE", "/calls/{id}"),
         ("POST", "/calls/{id}/retry-transcription"),
         ("POST", "/calls/{id}/confirm-review"),
         ("POST", "/calls/{id}/locate"),

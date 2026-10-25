@@ -212,7 +212,7 @@ def reset_response_demo(db: Session, user: User) -> None:
         plan.status = "cancelled"
         plan.decision_note = "SIMULATION reset by coordinator; historical records retained."
         update_response_status(db, db.get(Incident, plan.incident_id), "cancelled")
-    for call in db.scalars(select(Call).where(Call.simulation.is_(True), Call.status != "confirmed")):
+    for call in db.scalars(select(Call).where(Call.simulation.is_(True), Call.status.not_in(["confirmed", "deleted"]))):
         call.status, call.claim_token, call.lease_expires_at = "failed", None, None
         call.attempts = 3
         call.transcription_error = "Exercise reset. Load a new sample call."

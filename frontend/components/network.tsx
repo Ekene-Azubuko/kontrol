@@ -323,60 +323,74 @@ export function HospitalWorkspace() {
       {hospitals.isLoading && <Loading />}
       <div className="hospital-grid">
         {hospitals.data?.map((h) => (
-          <button
-            className="hospital-card"
-            key={h.id}
-            onClick={() => setSelected(h.id)}
-          >
+          <article className="hospital-card" key={h.id}>
             <div className="row">
               <span className="hospital-icon">
                 <Building2 size={24} />
               </span>
               <Badge value={h.diversion ? "diversion" : "accepting"} />
             </div>
-            <h2>{h.name}</h2>
+            <h2>
+              <button
+                className="hospital-name"
+                onClick={() => setSelected(h.id)}
+              >
+                {h.name}
+              </button>
+            </h2>
             <p>{h.location}</p>
             <div className="hospital-capacity">
-              <strong>{h.available_beds ?? "Unknown"}</strong>
+              <strong className={h.available_beds === null ? "capacity-unknown" : undefined}>
+                {h.available_beds ?? "Unknown"}
+              </strong>
               <span>available / {h.total_beds ?? "unknown"} total beds</span>
             </div>
             <div className="bed-bar">
               <span
                 className="occupied"
-                style={{ width: `${h.total_beds ? ((h.occupied_beds || 0) / h.total_beds) * 100 : 0}%` }}
+                style={{
+                  width: `${h.total_beds ? ((h.occupied_beds || 0) / h.total_beds) * 100 : 0}%`,
+                }}
               />
               <span
                 className="reserved"
-                style={{ width: `${h.total_beds ? (h.reserved_beds / h.total_beds) * 100 : 0}%` }}
+                style={{
+                  width: `${h.total_beds ? (h.reserved_beds / h.total_beds) * 100 : 0}%`,
+                }}
               />
             </div>
             <div className="row muted">
               <small>{h.occupied_beds ?? "Unknown"} occupied</small>
               <small>{h.reserved_beds} reserved</small>
             </div>
-            <div className="resource-tags">
-              {h.capabilities.map((c) => (
-                <span key={c}>{c}</span>
-              ))}
-            </div>
+            <details className="hospital-capabilities">
+              <summary>Capabilities ({h.capabilities.length})</summary>
+              <ul>
+                {h.capabilities.map((c) => (
+                  <li key={c}>{c}</li>
+                ))}
+              </ul>
+            </details>
             {!!h.source_urls.length && (
-              <div className="resource-tags">
-                {h.source_urls.map((url) => (
+              <div className="hospital-sources">
+                {h.source_urls.map((url, index) => (
                   <a key={url} href={url} target="_blank" rel="noreferrer">
-                    Source
+                    Source {index + 1}
                   </a>
                 ))}
               </div>
             )}
-            <div className="row">
+            <div className="row hospital-card-footer">
               <small>
                 {h.travel_minutes === null
                   ? "Select an incident for travel time"
                   : `${h.travel_minutes} min illustrative travel`}
               </small>
-              <span className="text-link">View inventory →</span>
+              <button className="text-link" onClick={() => setSelected(h.id)}>
+                View inventory →
+              </button>
             </div>
-          </button>
+          </article>
         ))}
       </div>
       <Drawer
@@ -391,8 +405,9 @@ export function HospitalWorkspace() {
             <Badge value={hospital.diversion ? "diversion" : "accepting"} />
             <h2>{hospital.available_beds ?? "Unknown"} available beds</h2>
             <p>
-              {hospital.occupied_beds ?? "Unknown"} occupied · {hospital.reserved_beds}{" "}
-              reserved · {hospital.total_beds ?? "Unknown"} total
+              {hospital.occupied_beds ?? "Unknown"} occupied ·{" "}
+              {hospital.reserved_beds} reserved ·{" "}
+              {hospital.total_beds ?? "Unknown"} total
             </p>
             <div className="resource-tags">
               {hospital.capabilities.map((c) => (
