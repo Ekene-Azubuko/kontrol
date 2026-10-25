@@ -1,6 +1,6 @@
 """Strict contracts for the four published Kontrol CREAO agents."""
 
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import Field, field_validator
 
@@ -11,6 +11,8 @@ class IntakeResult(StrictModel):
     """Capture the intake agent's interpretation without inventing missing report facts."""
 
     incident_id: str
+    caller_stated_location: str | None = Field(default=None, max_length=300)
+    key_statements: list[Annotated[str, Field(min_length=1, max_length=500)]] = Field(default_factory=list, max_length=10)
     incident_type: str = Field(min_length=2, max_length=100)
     summary: str = Field(min_length=10, max_length=2000)
     reported_injuries: int | None = Field(default=None, ge=0, le=100)

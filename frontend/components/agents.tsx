@@ -24,7 +24,7 @@ export function AgentWorkspace() {
       <PageHeading
         eyebrow="AGENT OBSERVABILITY"
         title={branding.agents}
-        subtitle="Actual execution state, source evidence, and structured findings. Agents advise; coordinators decide."
+        subtitle="Actual execution state, source evidence, and structured findings. Agents advise; dispatchers decide."
       />
       <Panel title="Intake → parallel evaluation → planning → approval">
         <div className="workflow-container">

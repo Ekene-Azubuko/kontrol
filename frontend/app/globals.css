@@ -3246,3 +3246,89 @@ progress::-webkit-progress-value {
   font-size: 12px;
   margin-bottom: 10px;
 }
+
+.simulation-banner { padding: 10px 20px; background: #422d12; color: #fcd58a; border-bottom: 1px solid #80602f; font-size: 12px; font-weight: 650; }
+.call-layout { display: grid; grid-template-columns: minmax(240px, 0.7fr) minmax(0, 1.6fr); gap: 20px; align-items: start; }
+.call-row { display: flex; flex-wrap: wrap; gap: 10px; width: 100%; padding: 16px; margin-bottom: 8px; text-align: left; border: 1px solid var(--border); border-radius: 8px; background: transparent; color: inherit; }
+.call-row small { width: 100%; }
+.call-row.selected { border-color: #60a5fa; }
+.sample-buttons { flex-wrap: wrap; margin-bottom: 16px; }
+.audio-upload { display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; }
+.call-layout audio { width: 100%; }
+.transcript { white-space: pre-wrap; overflow-wrap: anywhere; }
+.call-layout .row input[type=checkbox] { width: auto; }
+@media (max-width: 900px) { .call-layout { grid-template-columns: minmax(0, 1fr); } }
+
+.call-location { padding: 18px; border: 1px solid #284661; border-radius: 12px; background: linear-gradient(135deg, #102437, #101e30 65%); overflow: hidden; }
+.call-location-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.call-location-label { color: #8daac4; font-size: 10px; font-weight: 700; letter-spacing: .14em; }
+.call-location-badge { padding: 4px 9px; border: 1px solid #326b7b; border-radius: 999px; background: #123b45; color: #8be3df; font-size: 10px; }
+.call-location h3 { margin: 13px 0 5px; font-size: 20px; line-height: 1.3; }
+.call-location-quote { color: #8daac4; margin: 0 0 15px; font-size: 12px; }
+.call-location-actions { flex-wrap: wrap; margin-top: 14px; gap: 8px; }
+.call-location-editor { margin-top: 16px; padding-top: 16px; border-top: 1px solid #284661; }
+.call-location-editor input { width: 100%; min-width: 0; }
+.call-location-searching { min-height: 220px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: #b8d8ef; text-align: center; }
+.call-location-searching svg { color: #8cbff1; animation: location-breathe 1.2s ease-in-out infinite; }
+.call-location-searching span { font-size: 12px; color: #8daac4; }
+.plan-review-checks { margin: 18px 0; padding: 16px; border: 1px solid #4f4937; border-radius: 8px; background: #25271e55; }
+.review-check-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.review-check-grid > div { padding: 10px 12px; border: 1px solid #334359; border-radius: 6px; background: #152335; }
+.review-check-grid small { display: block; color: #91a5bd; font-size: 10px; margin-bottom: 5px; }
+.review-check-grid strong { font-size: 12px; line-height: 1.5; }
+.review-check-grid .attention strong, .review-attention { color: #ebc88b; }
+.review-attention { margin: 12px 0; font-size: 12px; }
+.review-alerts { margin-top: 14px; padding: 12px; border: 1px solid #7b4f35; border-radius: 6px; color: #ffd0a3; }
+.review-alerts ul, .review-full-notes ul { padding-left: 18px; font-size: 12px; line-height: 1.65; }
+.review-full-notes { margin-top: 14px; font-size: 12px; }
+.review-full-notes li + li { margin-top: 8px; }
+.agent-reasoning { margin: 12px 0; font-size: 12px; color: #9db1cb; overflow-wrap: anywhere; }
+.agent-reasoning summary, .review-full-notes summary, .hospital-option-details summary { cursor: pointer; color: #adc6e3; font-size: 12px; }
+.agent-reasoning p, .hospital-option-details p { margin: 10px 0; line-height: 1.65; }
+.plan-hospitals { margin: 24px 0; }
+.plan-card > p { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.hospital-comparison-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.hospital-comparison-heading h3 { display: flex; align-items: center; gap: 8px; }
+.hospital-comparison-heading label { font-size: 10px; color: #97acc7; }
+.hospital-comparison-heading select { display: block; margin: 5px 0 10px; padding: 7px; font-size: 12px; }
+.plan-hospitals .map-wrap { height: 285px; }
+.hospital-distance-key { margin: 10px 0 14px; color: #91a8c3; font-size: 11px; line-height: 1.65; }
+.hospital-distance-key strong { color: #8fe5cd; }
+.hospital-comparison-list { list-style: none; padding: 0; margin: 0; }
+.hospital-comparison-list > li { margin-bottom: 8px; padding: 12px; border: 1px solid #30465e; border-radius: 7px; background: #142438; }
+.hospital-comparison-list > li.selected { border-color: #87ccff; box-shadow: inset 3px 0 #87ccff; }
+.hospital-option-select { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 10px; align-items: center; width: 100%; color: inherit; background: none; border: 0; padding: 0; text-align: left; cursor: pointer; }
+.hospital-option-select strong { font-size: 12px; line-height: 1.5; }
+.hospital-option-select:focus-visible { outline: 2px solid #87ccff; outline-offset: 4px; }
+.hospital-distance-rank { display: grid; place-items: center; width: 26px; height: 26px; border: 1px solid #43877d; color: #a0dbd2; background: #193b3d; border-radius: 6px; font-size: 12px; font-weight: 700; }
+.hospital-distance-rank.nearest { color: #c9fff1; border-color: #71e4be; background: #1c5545; }
+.hospital-distance { text-align: right; font-size: 13px; font-weight: 600; white-space: nowrap; color: #b3d7ed; }
+.hospital-distance small { display: block; color: #8ca4bd; font-size: 9px; font-weight: 400; }
+.hospital-option-facts { display: flex; flex-wrap: wrap; gap: 5px 12px; margin: 10px 0; color: #a6b9cd; font-size: 10px; }
+.hospital-option-facts span:first-child { color: #a1c9ef; }
+.hospital-option-details { margin-top: 8px; font-size: 12px; color: #a1b2c7; overflow-wrap: anywhere; }
+.hospital-source-links { display: flex; gap: 12px; flex-wrap: wrap; }
+.map-marker.hospital.nearest { background: #1b6d51; border-color: #86ffd1; color: #edfff7; }
+.map-marker.selected { border-color: #c9eaff; box-shadow: 0 0 0 3px #7ebfff70, 0 4px 14px #0008; }
+.map-marker.facility { border-color: #b6a2dc; background: #3b3054; color: #eadfff; border-radius: 6px; }
+@media (max-width: 480px) {
+  .hospital-option-select { grid-template-columns: 25px minmax(0, 1fr); }
+  .hospital-distance { grid-column: 2; display: flex; align-items: center; gap: 6px; text-align: left; }
+  .review-check-grid { gap: 6px; }
+  .review-check-grid > div { padding: 8px; }
+}
+.call-location .map-wrap { margin: 16px -18px 12px; border-radius: 0; border-left: 0; border-right: 0; }
+.call-location-pending, .call-location-unavailable { padding: 18px; border: 1px solid #395369; border-radius: 12px; background: #122236; }
+.call-location-unavailable strong { color: #f5c575; }
+.location-reveal-status { position: absolute; left: 16px; bottom: 16px; display: flex; align-items: center; gap: 8px; z-index: 3; border: 1px solid #41627c; border-radius: 999px; padding: 8px 13px; background: #0a1828e8; color: #cee7f6; font-size: 11px; box-shadow: 0 4px 20px #0004; pointer-events: none; }
+.location-status-dot { width: 6px; height: 6px; border-radius: 50%; background: #8cbff1; animation: location-breathe 1.2s ease-in-out infinite; }
+.location-reveal-status.pinned .location-status-dot { background: #6ae3c3; animation: none; box-shadow: 0 0 9px #6ae3c377; }
+.incident-drop-anchor { width: 54px; height: 74px; pointer-events: none; }
+.incident-drop-pin { position: absolute; left: 10px; top: 8px; width: 34px; height: 43px; filter: drop-shadow(0 5px 10px #0008); animation: incident-pin-drop .85s cubic-bezier(.22,.8,.3,1) both; }
+.incident-pin-core { position: absolute; width: 32px; height: 32px; border: 2px solid #c0efff; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); background: linear-gradient(135deg, #479fe9, #177fc3); }
+.incident-pin-core::after { content: ''; position: absolute; width: 9px; height: 9px; border-radius: 50%; top: 10px; left: 10px; background: #e6f9ff; box-shadow: 0 0 8px #fff5; }
+.incident-pin-ring { position: absolute; left: 2px; bottom: 1px; width: 50px; height: 24px; border: 1px solid #82d9ff; border-radius: 50%; background: #41b8ef22; box-shadow: 0 0 20px #3bcaff30; animation: incident-pin-ring 2.2s ease-out .55s 3 both; }
+@keyframes incident-pin-drop { 0% { transform: translateY(-85px) scale(.65); opacity: 0; } 60% { transform: translateY(3px) scale(1.06,.94); opacity: 1; } 80% { transform: translateY(-8px) scale(.98,1.02); } 100% { transform: translateY(0) scale(1); opacity: 1; } }
+@keyframes incident-pin-ring { 0% { transform: scale(.35); opacity: 0; } 30% { opacity: .8; } 100% { transform: scale(1.8); opacity: 0; } }
+@keyframes location-breathe { 50% { opacity: .3; transform: scale(.75); } }
+@media (prefers-reduced-motion: reduce) { .incident-drop-pin, .incident-pin-ring, .location-status-dot, .call-location-searching svg { animation: none; } }

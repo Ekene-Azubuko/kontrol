@@ -10,7 +10,8 @@ import pytest
 from pydantic import ValidationError
 from sqlalchemy import select
 from app import worker
-from app.models import Incident, AgentRun, Resource
+from call_helpers import submit_call
+from app.models import AgentRun, Resource
 from app.response_schemas import IntakeResult as Assessment
 from app.creao import MockAdapter
 from app.config import settings
@@ -34,104 +35,40 @@ def report_data():
 
 def submit(client):
     """Submit through the real endpoint and return the associated internal incident."""
-    response = client.post("/reports", json=report_data(), headers=RESIDENT)
-    assert response.status_code == 201
-    assert response.json()["status"] == "queued"
-    return client.get("/incidents", headers=COORDINATOR).json()[0]
+    response = submit_call(client, report_data())
+    assert response.status_code == 200, response.text
+    return client.get(f"/incidents/{response.json()['incident_id']}", headers=COORDINATOR).json()
 
 
-def test_end_to_end_mock_publication(system):
-    """Connect ingestion, three real worker executions, human approval and resident retrieval."""
+def test_end_to_end_call_extraction(system):
+    """Keep reviewed source text private while all four validated findings become reviewable."""
     client, factory = system
     incident = submit(client)
-    assert client.get("/updates", headers=RESIDENT).json() == []
     for _ in range(4):
         assert worker.process_one()
     assert not worker.process_one()
     dossier = client.get(f"/incidents/{incident['id']}", headers=COORDINATOR).json()
-    assert len(dossier["findings"]) == 4
-    assert dossier["evidence"]
+    assert len(dossier["findings"]) == 4 and dossier["evidence"]
     assert dossier["status"] == "needs_review"
-    assert client.get("/reports", headers=RESIDENT).json()[0]["status"] == "needs_information"
-    draft = client.post(
-        "/updates",
-        headers=COORDINATOR,
-        json={
-            "incident_id": incident["id"],
-            "title": "SIMULATION road observation",
-            "body": "SIMULATION: Cedar Crossing obstruction reviewed by exercise coordinator.",
-            "audience": "Cedar Crossing",
-        },
-    ).json()
-    assert client.post(f"/updates/{draft['id']}/publish", headers=COORDINATOR).status_code == 409
-    assert client.get("/updates", headers=RESIDENT).json() == []
-    verified = client.post(
-        f"/incidents/{incident['id']}/actions",
-        headers=COORDINATOR,
-        json={
-            "action": "verify",
-            "version": dossier["version"],
-            "note": "Reviewed original exercise observations",
-        },
-    )
-    assert verified.status_code == 200
-    assert client.post(f"/updates/{draft['id']}/publish", headers=COORDINATOR).status_code == 200
-    public = client.get("/updates", headers=RESIDENT).json()
-    assert len(public) == 1 and "author_id" not in public[0]
-    answer = client.post(
-        "/assistant", headers=RESIDENT, json={"question": "Are there incident updates near me?"}
-    ).json()
-    assert answer["sources"][0]["id"] == draft["id"]
-    assert client.put(f"/subscriptions/{incident['id']}", headers=RESIDENT).status_code == 200
-    assert client.get("/subscriptions", headers=OTHER).json() == []
-    with factory() as db:
-        assert db.scalar(select(Incident)).status == "verified"
-        assert all(run.status == "completed" for run in db.scalars(select(AgentRun)))
+    assert client.get("/reports", headers=COORDINATOR).json()[0]["status"] == "needs_information"
 
 
 def test_private_reports_and_role_boundaries(system):
-    """Prevent role spoofing, cross-resident reads and operational-data exposure."""
+    """Prevent role spoofing and non-dispatcher reads across the retired public surface."""
     client, _ = system
     incident = submit(client)
-    report = client.get("/reports", headers=RESIDENT).json()[0]
-    assert client.get("/reports", headers=OTHER).json() == []
-    assert client.get(f"/reports/{report['id']}", headers=OTHER).status_code == 404
-    for path in [
-        "/incidents",
-        f"/incidents/{incident['id']}",
-        "/agents",
-        "/activity",
-        "/simulation",
-        "/response-plans",
-        "/hospitals",
-        "/vehicles",
-        "/dispatches",
-        "/communications",
-        "/resource-requests",
-    ]:
+    report = client.get("/reports", headers=COORDINATOR).json()[0]
+    for path in ["/reports", f"/reports/{report['id']}", "/calls", "/incidents",
+                 f"/incidents/{incident['id']}", "/agents", "/activity", "/simulation",
+                 "/response-plans", "/hospitals", "/vehicles", "/dispatches", "/communications",
+                 "/resource-requests", "/resources"]:
         assert client.get(path, headers=RESIDENT).status_code == 403
     assert client.get("/incidents", headers={"X-Role": "coordinator"}).status_code == 401
-    assert (
-        client.post(
-            f"/incidents/{incident['id']}/actions",
-            headers=RESIDENT,
-            json={"action": "verify", "version": 1, "note": "Spoofed approval"},
-        ).status_code
-        == 403
-    )
-    assert (
-        client.post(
-            "/updates",
-            headers=RESIDENT,
-            json={
-                "incident_id": incident["id"],
-                "title": "Spoofed",
-                "body": "Should never publish",
-                "audience": "All",
-            },
-        ).status_code
-        == 403
-    )
+    for path in ["/updates", "/subscriptions", "/assistant"]:
+        assert client.get(path, headers=COORDINATOR).status_code == 404
+    assert client.post("/reports", headers=RESIDENT, json=report_data()).status_code == 405
+    assert client.post(f"/incidents/{incident['id']}/actions", headers=RESIDENT,
+        json={"action": "verify", "version": 1, "note": "Spoofed approval"}).status_code == 403
 
 
 def test_status_transitions_and_optimistic_concurrency(system):
@@ -225,7 +162,7 @@ def test_resource_visibility_capacity_and_double_approval(system):
         db.add(resource)
         db.commit()
         resource_id = resource.id
-    assert client.get("/resources", headers=RESIDENT).json() == []
+    assert client.get("/resources", headers=RESIDENT).status_code == 403
     proposal = client.post(
         "/resource-requests",
         headers=COORDINATOR,
@@ -253,24 +190,12 @@ def test_resource_visibility_capacity_and_double_approval(system):
     assert client.post(f"/resource-requests/{proposal['id']}/approve", headers=COORDINATOR).status_code == 409
 
 
-def test_input_validation_and_assistant_abstention(system):
-    """Reject dangerous attachment types and refuse unsupported emergency directions."""
+def test_retired_public_mutations_are_unavailable(system):
+    """Removing the portal also removes its public API and assistant capability."""
     client, _ = system
-    assert (
-        client.post("/reports", headers=RESIDENT, json={**report_data(), "latitude": 100}).status_code == 422
-    )
-    assert (
-        client.post(
-            "/reports", headers=RESIDENT, json={**report_data(), "photo": "data:image/svg+xml,<svg/>"}
-        ).status_code
-        == 422
-    )
-    answer = client.post(
-        "/assistant", headers=RESIDENT, json={"question": "Where can I find shelter?"}
-    ).json()
-    assert not answer["sources"] and "No reliable" in answer["answer"]
-    answer = client.post("/assistant", headers=RESIDENT, json={"question": "Should I evacuate?"}).json()
-    assert not answer["sources"] and "cannot provide" in answer["answer"]
+    for path in ["/assistant", "/updates"]:
+        assert client.post(path, headers=RESIDENT, json={}).status_code == 404
+    assert client.put("/subscriptions/missing", headers=RESIDENT).status_code == 404
 
 
 def test_demo_credentials_disabled_in_production(system, monkeypatch):
@@ -468,7 +393,7 @@ def test_live_seed_queue_guard(system, monkeypatch):
 
 def test_replay_controls_preserve_observations(system):
     """Replay shares normal ingestion and reset never erases report provenance."""
-    from app.models import Simulation, Report
+    from app.models import Simulation, Call
     from app.seed import simulation_tick
     from app.db import now
     from datetime import timedelta
@@ -484,7 +409,7 @@ def test_replay_controls_preserve_observations(system):
         simulation_tick(db, state)
         db.commit()
         assert state.cursor == 1
-        assert db.scalar(select(Report)).source == "simulation_replay"
-        assert db.scalar(select(AgentRun)).status == "queued"
+        assert db.scalar(select(Call)).status == "queued"
+        assert not db.scalar(select(AgentRun))
     assert client.post("/simulation", headers=COORDINATOR, json={"action": "reset"}).json()["cursor"] == 0
-    assert len(client.get("/reports", headers=COORDINATOR).json()) == 1
+    assert len(client.get("/calls", headers=COORDINATOR).json()) == 1

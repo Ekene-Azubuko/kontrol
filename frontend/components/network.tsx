@@ -244,7 +244,7 @@ export function FleetWorkspace() {
               </>
             ) : (
               <p className="muted">
-                No active assignment. Available for coordinator-approved
+                No active assignment. Available for dispatcher-approved
                 responses.
               </p>
             )}

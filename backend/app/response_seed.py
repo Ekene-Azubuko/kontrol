@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from .db import now
 from .models import (
     AgentRun,
+    Call,
     CoordinatorAction,
     DispatchAssignment,
     EmergencyVehicle,
@@ -195,7 +196,7 @@ def response_report(index: int = 0) -> ReportInput:
 
 def start_demo(db: Session, resident: User, index: int = 0) -> Report:
     """Feed a prepared observation through the same durable ingestion path as resident reports."""
-    return ingest_report(db, resident, response_report(index), source="response_demo")
+    return ingest_report(db, resident, response_report(index), source="response_demo", simulation=True)
 
 
 def reset_response_demo(db: Session, user: User) -> None:
@@ -211,13 +212,17 @@ def reset_response_demo(db: Session, user: User) -> None:
         plan.status = "cancelled"
         plan.decision_note = "SIMULATION reset by coordinator; historical records retained."
         update_response_status(db, db.get(Incident, plan.incident_id), "cancelled")
+    for call in db.scalars(select(Call).where(Call.simulation.is_(True), Call.status != "confirmed")):
+        call.status, call.claim_token, call.lease_expires_at = "failed", None, None
+        call.attempts = 3
+        call.transcription_error = "Exercise reset. Load a new sample call."
     for run in db.scalars(
         select(AgentRun).where(
-            AgentRun.plan_id.is_not(None), AgentRun.status.in_(["queued", "running", "failed"])
+            AgentRun.plan_id.in_(select(ResponsePlan.id).where(ResponsePlan.simulation.is_(True))), AgentRun.status.in_(["queued", "running", "failed"])
         )
     ):
         run.status, run.error, run.completed_at = "cancelled", "SIMULATION reset", now()
-    for assignment in db.scalars(select(DispatchAssignment).where(DispatchAssignment.released_at.is_(None))):
+    for assignment in db.scalars(select(DispatchAssignment).where(DispatchAssignment.released_at.is_(None), DispatchAssignment.plan_id.in_(select(ResponsePlan.id).where(ResponsePlan.simulation.is_(True))))):
         assignment.status, assignment.released_at = "cancelled", now()
     for vehicle in db.scalars(select(EmergencyVehicle).where(EmergencyVehicle.simulation.is_(True))):
         vehicle.status = "available"

@@ -35,6 +35,7 @@ import { Button } from "./ui/button";
 import { Drawer } from "./ui/dialog";
 import { IncidentDetail } from "./incident-detail";
 import { ResourceWorkspace } from "./resources";
+import { Calls } from "./calls";
 import { Communications } from "./communications";
 import { AgentWorkspace } from "./agents";
 import {
@@ -52,6 +53,7 @@ import {
 
 /** Route existing and new coordinator workspaces through the shared application shell. */
 export function CoordinatorView({ page }: { page: string }) {
+  if (page === "calls") return <Calls />;
   if (page === "response-plans") return <ResponsePlans />;
   if (page === "dispatch") return <FleetWorkspace />;
   if (page === "hospitals") return <HospitalWorkspace />;
@@ -136,7 +138,7 @@ function CommandWorkspace({ register }: { register: boolean }) {
         subtitle={
           register
             ? "Original observations, reported needs, and the response taking shape around them."
-            : "One operational picture. From a resident report to an approved response."
+            : "One operational picture. From a reviewed call to an approved simulated response."
         }
       />
       {action.feedback}
@@ -276,7 +278,7 @@ function CommandWorkspace({ register }: { register: boolean }) {
               />
               <small className="muted">
                 Hospital and Dispatch evaluate in parallel. Every response waits
-                for coordinator approval.
+                for dispatcher approval.
               </small>
             </div>
           </Panel>

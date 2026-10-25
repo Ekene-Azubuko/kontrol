@@ -57,7 +57,7 @@ export function IncidentDetail({
                 <Badge value={item.response_status} />
               </div>
               <div className="tabs">
-                {["Response", "Reports", "History"].map((label) => (
+                {["Response", "Transcripts", "History"].map((label) => (
                   <button
                     key={label}
                     className={tab === label ? "active" : ""}
@@ -73,7 +73,7 @@ export function IncidentDetail({
                     <h3>Incident assessment</h3>
                     <p>{item.summary}</p>
                     <div className="callout">
-                      Response requirements are advisory until a coordinator
+                      Response requirements are advisory until a dispatcher
                       approves a plan.
                     </div>
                     <h3>Response plan</h3>
@@ -95,7 +95,7 @@ export function IncidentDetail({
                           const plan = await action.act<ResponsePlan>(
                             `/incidents/${item.id}/plan`,
                             {
-                              note: "Coordinator requested an incident response plan",
+                              note: "Dispatcher requested an incident response plan",
                             },
                           );
                           if (plan) setPlanId(plan.id);
@@ -127,7 +127,7 @@ export function IncidentDetail({
                     {action.feedback}
                   </>
                 )}
-                {tab === "Reports" &&
+                {tab === "Transcripts" &&
                   item.reports.map((report) => (
                     <article className="evidence" key={report.id}>
                       <div className="row">
@@ -166,7 +166,7 @@ export function IncidentDetail({
                       </article>
                     ))}
                     {!item.history.length && (
-                      <Empty>No coordinator decisions recorded yet.</Empty>
+                      <Empty>No dispatcher decisions recorded yet.</Empty>
                     )}
                   </>
                 )}

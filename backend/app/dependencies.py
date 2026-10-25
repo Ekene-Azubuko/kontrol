@@ -30,8 +30,9 @@ Principal = Annotated[User, Depends(current_user)]
 
 def coordinator(user: Principal) -> User:
     """Enforce coordinator permissions at every operational API boundary."""
+    # Keep the persisted coordinator role for historical authorization; the UI calls it Dispatcher.
     if user.role != "coordinator":
-        raise HTTPException(403, "Coordinator access required")
+        raise HTTPException(403, "Dispatcher access required")
     return user
 
 

@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import {
   ArrowRight,
@@ -12,13 +13,15 @@ import {
 } from "lucide-react";
 import { useData } from "@/lib/api";
 import type { AgentRun } from "@/lib/types";
-import type { ResponsePlan, Vehicle } from "@/lib/response-types";
+import type { RecordedCall, ResponsePlan, Vehicle } from "@/lib/response-types";
 import { time } from "@/lib/utils";
 import { Badge, Empty, ErrorBox, Loading, Panel, useAction } from "./shared";
 import { PageHeading } from "./page-heading";
 import { Button } from "./ui/button";
 import { Drawer } from "./ui/dialog";
-import { IncidentMap, type MapItem } from "./map";
+import { PlanHospitals } from "./plan-hospitals";
+import { PlanReviewChecks } from "./plan-review-checks";
+import { CallReopen } from "./call-reopen";
 
 export const stages = [
   {
@@ -43,7 +46,7 @@ export const stages = [
     key: "planning",
     name: "Response Planning",
     description:
-      "Combines evaluated options into one plan for a coordinator's decision.",
+      "Combines evaluated options into one plan for a dispatcher's decision.",
   },
 ];
 
@@ -83,7 +86,7 @@ export function Workflow({
       <div className={`workflow-node ${approved ? "completed" : "human"}`}>
         <ShieldCheck size={18} />
         <span>
-          Coordinator
+          Dispatcher
           <small>{approved ? "approved" : "approval required"}</small>
         </span>
       </div>
@@ -238,45 +241,42 @@ export function ResponsePlans() {
   );
 }
 
-/** Render agent-ranked alternatives from the exact records supplied during evaluation. */
+/** Keep vehicle alternatives compact, with each rationale available only when requested. */
 function Alternatives({ run }: { run: AgentRun }) {
   const vehicles = (run.input.vehicles || []) as Vehicle[];
-  const hospitalResults = run.output?.hospitals || [];
   const vehicleResults = run.output?.recommended_vehicles || [];
-  const count = run.stage === "hospital" ? hospitalResults.length : vehicleResults.length;
+  const count = vehicleResults.length;
   return (
     <details className="alternatives">
-      <summary>
-        {run.stage === "hospital" ? "Hospital" : "Vehicle"} options evaluated ·{" "}
-        {count}
-      </summary>
-      <p>{run.output?.reasoning}</p>
-      {hospitalResults.map((hospital) => (
-          <article key={`${hospital.name}-${hospital.address}`} className="evidence">
-            <div className="row">
-              <strong>{hospital.name}</strong>
-              <span className="mono">
-                {hospital.estimated_travel_minutes ?? "—"} min · {hospital.travel_time_method.replaceAll("_", " ")}
-              </span>
-            </div>
-            <p>{hospital.suitability_notes}</p>
-            <small className="muted">
-              {hospital.address} · {hospital.available_beds ?? "Capacity unknown"}
-            </small>
-            {!!hospital.source_urls.length && <div>{hospital.source_urls.map((url) => <a key={url} href={url} target="_blank" rel="noreferrer">Source</a>)}</div>}
-          </article>
-      ))}
+      <summary>Vehicle options evaluated · {count}</summary>
       {vehicleResults.map((option) => {
         const vehicle = vehicles.find((row) => row.id === option.vehicle_id);
-        return <article key={option.vehicle_id} className="evidence">
-          <div className="row"><strong>{vehicle?.call_sign || option.vehicle_id}</strong><span className="mono">{option.estimated_arrival_minutes ?? "—"} min</span></div>
-          <p>{option.reasoning}</p>
-          <small className="muted">{option.response_role.replaceAll("_", " ")} · {option.starting_location} · {vehicle?.status || "unknown"}</small>
-        </article>;
+        return (
+          <article key={option.vehicle_id} className="evidence">
+            <div className="row">
+              <strong>{vehicle?.call_sign || option.vehicle_id}</strong>
+              <span className="mono">
+                {option.estimated_arrival_minutes ?? "—"} min
+              </span>
+            </div>
+            <small className="muted">
+              {option.response_role.replaceAll("_", " ")} ·{" "}
+              {option.starting_location} · {vehicle?.status || "unknown"}
+            </small>
+            <details className="agent-reasoning">
+              <summary>Why this vehicle?</summary>
+              <p>{option.reasoning}</p>
+            </details>
+          </article>
+        );
       })}
       {!count && (
         <p className="muted">No suitable options recommended for this stage.</p>
       )}
+      <details className="agent-reasoning">
+        <summary>Full dispatch reasoning</summary>
+        <p>{run.output?.reasoning}</p>
+      </details>
     </details>
   );
 }
@@ -285,47 +285,23 @@ function Alternatives({ run }: { run: AgentRun }) {
 export function PlanDetail({
   id,
   onClose,
+  onCallReopened,
 }: {
   id: string | null;
   onClose: () => void;
+  onCallReopened?: (call: RecordedCall) => void;
 }) {
+  const router = useRouter();
   const query = useData<ResponsePlan>(`/response-plans/${id}`, !!id);
   const [note, setNote] = useState("");
   const action = useAction();
   const plan = query.data;
-  const recommendationMarkers: MapItem[] = plan
-    ? [
-        ...plan.runs.flatMap((run) =>
-          (run.output?.hospitals || []).map((hospital, index) => ({
-            id: `discovered-hospital:${run.id}:${index}`,
-            title: hospital.name,
-            location: hospital.address,
-            latitude: hospital.latitude,
-            longitude: hospital.longitude,
-            category: "hospital",
-            kind: "hospital" as const,
-          })),
-        ),
-        ...plan.runs.flatMap((run) =>
-          (run.output?.discovered_facilities || []).filter(
-            (facility) => facility.latitude !== null && facility.longitude !== null,
-          ).map((facility, index) => ({
-            id: `discovered-facility:${run.id}:${index}`,
-            title: facility.name,
-            location: facility.address,
-            latitude: facility.latitude as number,
-            longitude: facility.longitude as number,
-            category: facility.facility_type,
-            kind: "hospital" as const,
-          })),
-        ),
-      ]
-    : [];
   async function decide(kind: "approve" | "reject" | "revise") {
     if (!plan) return;
-    const decisionNote = kind === "approve" && note.trim().length < 3
-      ? `Coordinator approved the proposed response with its recorded constraints. ${note.trim()}`.trim()
-      : note.trim();
+    const decisionNote =
+      kind === "approve" && note.trim().length < 3
+        ? `Dispatcher approved the proposed response with its recorded constraints. ${note.trim()}`.trim()
+        : note.trim();
     const result = await action.act<ResponsePlan>(
       `/response-plans/${plan.id}/decision`,
       {
@@ -365,24 +341,21 @@ export function PlanDetail({
             </div>
             <div className="detail-section">
               <Workflow runs={plan.runs} approved={!!plan.approved_at} />
-              <p className="plan-summary">{plan.summary}</p>
-              {!!recommendationMarkers.length && (
-                <IncidentMap items={recommendationMarkers} />
-              )}
-              <div className="requirement-grid">
-                <div>
-                  <small>REPORTED INJURED</small>
-                  <strong>
-                    {plan.incident.reported_casualties ?? "Unknown"}
-                  </strong>
-                </div>
-                <div>
-                  <small>PLANNING ESTIMATE</small>
-                  <strong>
-                    {plan.requirements.estimated_patients ?? "Pending"}
-                  </strong>
-                </div>
-              </div>
+              {plan.call && <CallReopen call={plan.call} onReopened={(call) => {
+                onClose();
+                if (onCallReopened) onCallReopened(call);
+                else router.push(`/coordinator/calls?call=${encodeURIComponent(call.id)}`);
+              }} />}
+              <p className="plan-summary">
+                {plan.status === "generating"
+                  ? "Agents are preparing the response."
+                  : `${plan.assignments.length} proposed units · ${new Set(plan.assignments.map((assignment) => assignment.hospital_id).filter(Boolean)).size} provisional hospital destinations`}
+              </p>
+              <PlanReviewChecks plan={plan} />
+              <details className="agent-reasoning">
+                <summary>Agent plan summary</summary>
+                <p>{plan.summary}</p>
+              </details>
               {!!plan.requirements.required_response_types?.length && (
                 <>
                   <h3>Response requirements</h3>
@@ -401,10 +374,14 @@ export function PlanDetail({
                       <Ambulance size={18} /> {assignment.vehicle.call_sign}
                     </strong>
                     <span className="eta">
-                      {assignment.vehicle_eta_minutes} min to scene · {assignment.vehicle_eta_method.replaceAll("_", " ")}
+                      {assignment.vehicle_eta_minutes} min to scene ·{" "}
+                      {assignment.vehicle_eta_method.replaceAll("_", " ")}
                     </span>
                   </div>
-                  <p>{assignment.reason}</p>
+                  <details className="agent-reasoning">
+                    <summary>Assignment rationale</summary>
+                    <p>{assignment.reason}</p>
+                  </details>
                   <div className="assignment-destination">
                     <Building2 size={16} />
                     <span>
@@ -425,29 +402,67 @@ export function PlanDetail({
                     : "No resource assignments proposed."}
                 </Empty>
               )}
-              {plan.constraints.length > 0 && (
-                <div className="constraints">
-                  <h3>Constraints & considerations</h3>
-                  <ul>
-                    {plan.constraints.map((text) => (
-                      <li key={text}>{text}</li>
-                    ))}
-                  </ul>
-                </div>
+              <PlanHospitals key={plan.id} plan={plan} />
+              {plan.call && (
+                <details className="alternatives">
+                  <summary>Call transcript provenance</summary>
+                  <p>
+                    Incident location: {plan.call.confirmed_address} ·{" "}
+                    {plan.call.confirmed_latitude},{" "}
+                    {plan.call.confirmed_longitude}
+                  </p>
+                  {plan.call.detected_location?.input_source ===
+                    "dispatcher_address" && (
+                    <p>
+                      Address edited by dispatcher:{" "}
+                      {plan.call.detected_location.input_address}. Coordinates
+                      were located automatically.
+                    </p>
+                  )}
+                  <p>
+                    Approximate caller pin:{" "}
+                    {plan.call.caller_latitude ?? "Unavailable"},{" "}
+                    {plan.call.caller_longitude ?? "Unavailable"}
+                  </p>
+                  <details>
+                    <summary>Original machine transcript</summary>
+                    <p>{plan.call.original_transcript}</p>
+                  </details>
+                  <h4>Transcript used for response</h4>
+                  <p>{plan.call.reviewed_transcript}</p>
+                  <p className="muted">
+                    Patient counts are unconfirmed estimates. Hospital
+                    destinations are provisional.
+                  </p>
+                </details>
               )}
               <h3>Agent explanations & alternatives</h3>
               {plan.runs
-                .filter((run) => run.output)
+                .filter((run) => run.output && run.stage !== "hospital")
                 .map((run) =>
-                  run.stage === "hospital" || run.stage === "dispatch" ? (
+                  run.stage === "dispatch" ? (
                     <Alternatives key={run.id} run={run} />
                   ) : (
-                    <article className="evidence" key={run.id}>
-                      <small>
-                        {stages.find((stage) => stage.key === run.stage)?.name}
-                      </small>
-                      <p>{run.output?.summary || run.output?.plan_summary || run.output?.reasoning}</p>
-                    </article>
+                    <details className="alternatives" key={run.id}>
+                      <summary>
+                        {stages.find((stage) => stage.key === run.stage)?.name}{" "}
+                        details
+                      </summary>
+                      {run.output?.caller_stated_location && (
+                        <p>
+                          Caller-stated location:{" "}
+                          {run.output.caller_stated_location}
+                        </p>
+                      )}
+                      {run.output?.key_statements?.map((statement, index) => (
+                        <blockquote key={index}>{statement}</blockquote>
+                      ))}
+                      <p>
+                        {run.output?.summary ||
+                          run.output?.plan_summary ||
+                          run.output?.reasoning}
+                      </p>
+                    </details>
                   ),
                 )}
               {plan.runs
@@ -493,17 +508,19 @@ export function PlanDetail({
               )}
               {plan.decision_note && (
                 <div className="evidence">
-                  <small>COORDINATOR DECISION</small>
+                  <small>DISPATCHER DECISION</small>
                   <p>{plan.decision_note}</p>
                 </div>
               )}
               {plan.revision > 1 && (
                 <p className="muted">Revision request: {plan.revision_note}</p>
               )}
-              {["awaiting_approval", "needs_information"].includes(plan.status) && (
+              {["awaiting_approval", "needs_information"].includes(
+                plan.status,
+              ) && (
                 <div className="approval-box">
                   <h3>
-                    <ShieldCheck size={20} /> Coordinator decision
+                    <ShieldCheck size={20} /> Dispatcher decision
                   </h3>
                   <p>
                     {plan.feasible
@@ -547,7 +564,7 @@ export function PlanDetail({
               )}
               {action.feedback}
               <small className="muted">
-                Agent recommendations require coordinator approval before
+                Agent recommendations require dispatcher approval before
                 resources are assigned.
               </small>
             </div>

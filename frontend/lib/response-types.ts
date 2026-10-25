@@ -55,6 +55,8 @@ export type Assignment = {
   hospital: Hospital | null;
 };
 export type AgentOutput = {
+  key_statements?: string[];
+  caller_stated_location?: string | null;
   schema_version?: string | null;
   location?: string | null;
   planned_patient_count?: number | null;
@@ -125,6 +127,7 @@ export type ResponsePlan = {
   incident_id: string;
   incident: Incident;
   report_source: string;
+  call: RecordedCall | null;
   status: string;
   revision: number;
   revision_note: string;
@@ -169,4 +172,45 @@ export type Communication = {
   status: string;
   created_at: string;
   acknowledged_at: string | null;
+};
+
+export type CallStatus = "queued" | "transcribing" | "awaiting_review" | "confirmed" | "failed";
+export type DetectedCallLocation = {
+  status: "resolved" | "unavailable";
+  address: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  source: "exercise_gazetteer" | "photon" | "sf_intersections" | "unavailable";
+  input_source?: "transcript" | "dispatcher_address";
+  input_address?: string | null;
+  reference?: string | null;
+  evidence: string | null;
+  reason: string;
+};
+export type RecordedCall = {
+  id: string;
+  can_reopen: boolean;
+  status: CallStatus;
+  received_at: string;
+  sample_key: string | null;
+  audio_content_type: string;
+  duration_seconds: number;
+  caller_latitude: number | null;
+  caller_longitude: number | null;
+  caller_accuracy_m: number | null;
+  original_transcript: string | null;
+  detected_location: DetectedCallLocation | null;
+  reviewed_transcript: string | null;
+  confirmed_latitude: number | null;
+  confirmed_longitude: number | null;
+  confirmed_address: string | null;
+  confirmed_by: string | null;
+  confirmed_at: string | null;
+  report_id: string | null;
+  incident_id: string | null;
+  plan_id: string | null;
+  transcription_error: string | null;
+  attempts: number;
+  simulation: boolean;
+  version: number;
 };

@@ -1,8 +1,7 @@
-/** Canonical names shared by application metadata and the two interface shells. */
+/** Canonical names shared by application metadata and the dispatcher workspace. */
 export const branding = {
   product: "Kontrol",
   applicationTitle: "Kontrol | Emergency Intelligence",
   command: "Kontrol Command",
-  community: "Kontrol Community",
   agents: "Kontrol Agents",
 } as const;

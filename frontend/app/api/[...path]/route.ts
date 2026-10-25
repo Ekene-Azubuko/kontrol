@@ -11,12 +11,12 @@ async function proxy(
     const response = await fetch(url, {
       method: request.method,
       headers: {
-        "Content-Type": "application/json",
+        "Content-Type": request.headers.get("content-type") || "application/json",
         Authorization: request.headers.get("authorization") || "",
       },
       body: ["GET", "HEAD"].includes(request.method)
         ? undefined
-        : await request.text(),
+        : await request.arrayBuffer(),
       cache: "no-store",
       signal: request.signal,
     });
@@ -25,7 +25,7 @@ async function proxy(
       headers: {
         "Content-Type":
           response.headers.get("content-type") || "application/json",
-        "Cache-Control": "no-cache",
+        "Cache-Control": response.headers.get("cache-control") || "no-store",
         "X-Accel-Buffering": "no",
       },
     });

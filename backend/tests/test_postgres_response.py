@@ -1,17 +1,11 @@
 """Optional real PostgreSQL concurrency checks in an explicitly disposable test database."""
 
-import os
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier, Event
-import pytest
 from fastapi import HTTPException
-from sqlalchemy import create_engine, select
-from sqlalchemy.engine import make_url
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import select
 from app import worker
-from app.config import settings
 from app.creao import MockAdapter
-from app.db import Base
 from app.models import (
     AgentRun,
     DispatchAssignment,
@@ -23,43 +17,18 @@ from app.models import (
     User,
 )
 from app.response_schemas import PlanDecision
-from app.response_seed import reset_response_demo, response_report, seed_network
+from app.response_seed import reset_response_demo, response_report
 from app.response_services import decide_plan
-from app.services import ingest_report, token_hash
+from app.services import ingest_report
 
 
-@pytest.fixture()
-def postgres_system(monkeypatch):
-    """Allow real row locks only against the named throwaway database, never the demo database."""
-    url = os.environ.get("TEST_DATABASE_URL")
-    if not url:
-        pytest.skip("Set TEST_DATABASE_URL to run PostgreSQL concurrency checks")
-    if make_url(url).database != "kontrol_response_test":
-        raise RuntimeError("Concurrency tests require the disposable kontrol_response_test database")
-    engine = create_engine(url)
-    Base.metadata.create_all(engine)
-    factory = sessionmaker(engine, expire_on_commit=False)
-    monkeypatch.setattr(worker, "SessionLocal", factory)
-    monkeypatch.setattr(settings, "mock_agent_seconds", 0)
-    with factory() as db:
-        db.add_all(
-            [
-                User(name="Test resident", role="resident", token_hash=token_hash("test-resident")),
-                User(name="Test coordinator", role="coordinator", token_hash=token_hash("test-coordinator")),
-            ]
-        )
-        seed_network(db)
-        db.commit()
-    yield factory
-    Base.metadata.drop_all(engine)
-    engine.dispose()
 
 
 def submit(factory):
     """Create an ordinary source report and its intake job in one transaction."""
     with factory() as db:
         resident = db.scalar(select(User).where(User.role == "resident"))
-        report = ingest_report(db, resident, response_report())
+        report = ingest_report(db, resident, response_report(), simulation=True)
         db.commit()
         return report.id
 

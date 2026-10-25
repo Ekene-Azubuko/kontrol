@@ -4,30 +4,40 @@ from .response_schemas import DispatchResult, HospitalResult, IntakeResult, Plan
 
 
 def intake(payload: dict) -> IntakeResult:
-    """Classify a report and preserve its explicit injury count."""
+    """Extract bounded facts from reviewed text without converting silence into zero patients."""
+    import re
+
     report = payload["agent_input"]
-    description = report["description"].lower()
-    incident_type = (
-        "building_collapse"
-        if "collapse" in description
-        else "fire"
-        if "fire" in description
-        else "collision"
-        if "collid" in description
-        else "road_obstruction"
-    )
-    responses = ["ambulance"] if (report["reported_injuries"] or 0) > 0 else []
+    # Historical stored runs may still use the old envelope; new jobs always use transcripts.
+    text = report.get("transcript", report.get("description", ""))
+    description = text.lower()
+    injuries = None
+    for phrase, count in [("no injuries", 0), ("one person", 1), ("one reported injured", 1),
+                          ("two people", 2), ("two reported injured", 2)]:
+        if phrase in description:
+            injuries = count
+            break
+    match = re.search(r"(\d{1,3}) (?:people|persons|patients).*?(?:injur|unresponsive)", description)
+    if match:
+        injuries = min(100, int(match[1]))
+    if "transcript" not in report:
+        injuries = report.get("reported_injuries")
+    incident_type = ("building_collapse" if "collapse" in description else
+                     "fire" if "fire" in description else
+                     "collision" if "collid" in description or "collision" in description else
+                     report.get("category", "road_obstruction"))
+    responses = ["ambulance"] if injuries is None or injuries > 0 else []
     if incident_type in {"building_collapse", "fire", "collision", "road_obstruction"}:
         responses.append("fire_rescue")
     if not responses:
-        responses.append("incident_support")
+        responses.append("fire_rescue")
     return IntakeResult(
-        incident_id=report["incident_id"],
-        incident_type=incident_type,
-        summary=report["description"][:2000],
-        reported_injuries=report["reported_injuries"],
-        required_response_types=responses,
-        reasoning="Response types follow only the reported incident and injury information.",
+        incident_id=report["incident_id"], incident_type=incident_type,
+        summary=text[:2000], reported_injuries=injuries, required_response_types=responses,
+        key_statements=[text[:500]],
+        reasoning="Deterministic extraction from the reviewed transcript; patient counts remain unconfirmed.",
+        limitations=["Transcript-derived patient count is an unconfirmed estimate.",
+                     "Hospital suggestions are provisional; no real dispatch occurs."],
     )
 
 

@@ -73,6 +73,7 @@ def dispatch_tick(db: Session, current: datetime | None = None) -> None:
                     CommunicationLog(
                         plan_id=assignment.plan_id,
                         incident_id=incident.id,
+                        simulation=incident.simulation,
                         recipient=hospital.name,
                         recipient_type="hospital",
                         message=f"{vehicle.call_sign} arrived; patients: "
@@ -97,6 +98,7 @@ def dispatch_tick(db: Session, current: datetime | None = None) -> None:
                 CommunicationLog(
                     plan_id=plan.id,
                     incident_id=incident.id,
+                    simulation=plan.simulation,
                     recipient="Kontrol coordination",
                     recipient_type="coordination",
                 message="Response completed. All assigned units are available again; arrived patients remain reflected in hospital occupancy.",

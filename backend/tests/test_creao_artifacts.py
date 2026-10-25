@@ -15,7 +15,7 @@ RESULTS = {
         "summary": "Two cars collided and no injuries were reported.",
         "reported_injuries": 0, "required_response_types": ["police"],
         "reasoning": "Traffic control is needed.",
-        "limitations": [], "status": None,
+        "limitations": [], "status": None, "caller_stated_location": None, "key_statements": [],
     },
     "hospital": {
         "incident_id": "incident-1", "hospitals": [], "recommended_hospitals": [],
@@ -57,7 +57,7 @@ def download_result(stage: str, body: str):
 
 
 @pytest.mark.parametrize("stage", RESULTS)
-@pytest.mark.parametrize("wrapper", ["bare", "fence", "prose", "string_json", "string_fence"])
+@pytest.mark.parametrize("wrapper", ["bare", "fence", "prose", "unfenced_prose", "string_json", "string_fence"])
 def test_artifact_formats_validate_for_every_stage(stage, wrapper):
     """Accept the observed prose-wrapped artifact and existing supported JSON encodings."""
     expected = RESULTS[stage]
@@ -67,6 +67,7 @@ def test_artifact_formats_validate_for_every_stage(stage, wrapper):
         "bare": encoded,
         "fence": fence,
         "prose": f"` (also saved at `files/result.json`).\n\n{fence}\n\nUnverified report.",
+        "unfenced_prose": f"Inputs validated. Now evaluating supplied data.{encoded}\nUnverified report.",
         "string_json": json.dumps(encoded),
         "string_fence": json.dumps(fence),
     }
@@ -128,7 +129,7 @@ def test_intake_prefers_full_artifact_and_preserves_limitations():
             }],
         }, client)
     assert downloads == ["/artifacts/incident.json"]
-    assert result.model_dump() == artifact
+    assert result.model_dump() == {**artifact, "caller_stated_location": None, "key_statements": []}
 
 
 def test_intake_does_not_treat_failure_status_as_completed_output():

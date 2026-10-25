@@ -20,12 +20,13 @@ services:
       DATABASE_URL: postgresql+psycopg://kontrol:${POSTGRES_PASSWORD:-local-simulation-only}@db:5432/kontrol
       APP_ENV: ${APP_ENV:-development}
       DEMO_AUTH: ${DEMO_AUTH:-true}
-      CREAO_MODE: ${CREAO_MODE:-live}
+      CREAO_MODE: ${CREAO_MODE:-mock}
       CREAO_BASE_URL: ${CREAO_BASE_URL:-}
       CREAO_API_KEY: ${CREAO_API_KEY:-}
       CREAO_API_VERSION: ${CREAO_API_VERSION:-v1}
       CREAO_INPUT_FIELD: ${CREAO_INPUT_FIELD:-context}
       CREAO_TIMEOUT: ${CREAO_TIMEOUT:-180}
+      CREAO_POLL_SECONDS: ${CREAO_POLL_SECONDS:-2}
       CREAO_INVOKE_PATH: ${CREAO_INVOKE_PATH:-}
       CREAO_POLL_PATH: ${CREAO_POLL_PATH:-}
       CREAO_INTAKE_AGENT_ID: ${CREAO_INTAKE_AGENT_ID:-}
@@ -33,10 +34,22 @@ services:
       CREAO_DISPATCH_AGENT_ID: ${CREAO_DISPATCH_AGENT_ID:-}
       CREAO_PLANNING_AGENT_ID: ${CREAO_PLANNING_AGENT_ID:-}
       LIVE_SIMULATION_ENABLED: ${LIVE_SIMULATION_ENABLED:-false}
+      TRANSCRIPTION_MODE: ${TRANSCRIPTION_MODE:-mock}
+      TRANSCRIPTION_API_KEY: ${TRANSCRIPTION_API_KEY:-}
+      TRANSCRIPTION_BASE_URL: ${TRANSCRIPTION_BASE_URL:-https://api.openai.com/v1}
+      TRANSCRIPTION_MODEL: ${TRANSCRIPTION_MODEL:-gpt-4o-mini-transcribe}
+      TRANSCRIPTION_TIMEOUT: ${TRANSCRIPTION_TIMEOUT:-60}
+      CALL_AUDIO_DIR: /app/call_audio
+      CALL_MAX_AUDIO_BYTES: ${CALL_MAX_AUDIO_BYTES:-20971520}
+      CALL_MAX_DURATION_SECONDS: ${CALL_MAX_DURATION_SECONDS:-300}
+      CALL_GEOCODING_URL: ${CALL_GEOCODING_URL-https://photon.komoot.io/api/}
+      CALL_INTERSECTIONS_URL: ${CALL_INTERSECTIONS_URL-https://data.sf.gov/resource/gmfx-8h6i.json}
       DEMO_FLEET_ENABLED: ${DEMO_FLEET_ENABLED:-false}
       MOCK_AGENT_SECONDS: ${MOCK_AGENT_SECONDS:-3}
       DISPATCH_STAGE_SECONDS: ${DISPATCH_STAGE_SECONDS:-12}
       WORKER_INTERVAL: ${WORKER_INTERVAL:-1}
+    volumes:
+      - call_audio:/app/call_audio
     command: ["sh", "-c", "alembic upgrade head && python -m app.seed && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
     ports:
       - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
@@ -52,6 +65,8 @@ services:
   worker:
     build: ./backend
     environment: *backend-env
+    volumes:
+      - call_audio:/app/call_audio
     command: ["python", "-m", "app.worker"]
     depends_on:
       backend:
@@ -78,4 +93,5 @@ services:
       retries: 10
     restart: unless-stopped
 volumes:
+  call_audio:
   postgres_data:

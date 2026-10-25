@@ -6,9 +6,9 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: branding.applicationTitle,
   description:
-    "Kontrol Command and Kontrol Community, supported by Kontrol Agents.",
+    "SIMULATION (NOT FOR EMERGENCY USE). Recorded-call dispatcher co-pilot.",
 };
-/** Share live queries and the built-in portal identity across both surfaces. */
+/** Share authenticated queries and the local dispatcher identity across exercise pages. */
 export default function RootLayout({
   children,
 }: {
