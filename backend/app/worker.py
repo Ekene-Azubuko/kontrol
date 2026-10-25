@@ -5,6 +5,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from sqlalchemy import case, select
+from .agent_errors import agent_error_message
 from .config import settings
 from .demo_fleet import vehicle_enabled
 from .creao import get_adapter
@@ -39,7 +40,7 @@ def job_payload(db, run: AgentRun) -> dict:
         for row in prior
         if row.status in {"completed", "failed", "cancelled"}
     }
-    include_simulation = settings.creao_mode == "mock"
+    include_simulation = settings.creao_mode == "mock" or settings.live_simulation_enabled
     # Intake needs no resources, and Hospital must not depend on fleet reads.
     # Planning's resource snapshots stay local for validation; only agent_input goes to CREAO.
     hospital_rows = (
@@ -60,9 +61,10 @@ def job_payload(db, run: AgentRun) -> dict:
     if run.stage == "intake":
         agent_input = {
             "incident_id": report.id,
-            "description": report.description,
-            "location": report.location,
-            "reported_injuries": report.reported_casualties,
+            "transcript": report.description,
+            "confirmed_location": location,
+            "call_received_at": report.observed_at.isoformat(),
+            "category": report.category,
         }
     elif run.stage == "hospital":
         intake = findings["intake"]
@@ -163,6 +165,7 @@ def finish_stage(db, run: AgentRun, output: dict) -> None:
         plan.requirements = {
             "estimated_patients": output["reported_injuries"],
             "required_response_types": output["required_response_types"],
+            "patient_count_verification": "unconfirmed_agent_estimate",
         }
         incident.summary, incident.category = (
             output["summary"],
@@ -173,7 +176,7 @@ def finish_stage(db, run: AgentRun, output: dict) -> None:
                 incident_id=incident.id,
                 report_id=run.report_id,
                 text=output["summary"],
-                source="resident observation / agent extraction",
+                source="911 call transcript / agent extraction",
                 uncertainty=output["reasoning"],
             )
         )
@@ -186,12 +189,13 @@ def finish_stage(db, run: AgentRun, output: dict) -> None:
         plan.summary = output["plan_summary"]
         plan.feasible = output["status"] == "awaiting_approval" and not output["unfilled_requirements"]
         plan.constraints = list(dict.fromkeys(
-            output["constraints"] + output.get("limitations", []) + output["unfilled_requirements"]
+            plan.constraints + output["constraints"] + output.get("limitations", []) + output["unfilled_requirements"]
+            + run.input["findings"]["intake"].get("limitations", [])
         ))
         # Older completed Hospital jobs may predate discovery persistence; recover missing destinations on retry.
         store_discovered_hospitals(db, run.input["findings"]["hospital"].get("hospitals", []), refresh_existing=False)
         hospital_query = select(Hospital)
-        if settings.creao_mode == "live":
+        if settings.creao_mode == "live" and not settings.live_simulation_enabled:
             hospital_query = hospital_query.where(Hospital.simulation.is_(False))
         hospital_by_name = {row.name.casefold(): row for row in db.scalars(hospital_query)}
         vehicle_snapshot = {v["id"]: v for v in run.input["vehicles"]}
@@ -299,9 +303,9 @@ def process_one() -> bool:
             .where(AgentRun.status == "queued", ResponsePlan.status == "generating")
         )
         if settings.creao_mode == "live" and not settings.live_simulation_enabled:
-            query = query.where(Report.source == "resident")
+            query = query.where(Report.simulation.is_(False))
         run = db.scalar(
-            query.order_by(case((Report.source == "resident", 0), else_=1), AgentRun.created_at)
+            query.order_by(case((Report.simulation.is_(False), 0), else_=1), AgentRun.created_at)
             .with_for_update(skip_locked=True, of=AgentRun)
             .limit(1)
         )
@@ -346,9 +350,7 @@ def process_one() -> bool:
                 run.remote_id = getattr(adapter, "remote_id", None)
                 run.raw_response = getattr(adapter, "raw_response", None)
                 run.status, run.completed_at = "failed", now()
-                run.error = (
-                    f"{type(exc).__name__}: output validation or execution failed; inspect worker logs"
-                )
+                run.error = agent_error_message(stage, exc)
                 plan = db.get(ResponsePlan, plan_id)
                 incident = db.get(Incident, run.incident_id)
                 if stage in {"hospital", "dispatch"}:
@@ -366,8 +368,12 @@ def main() -> None:
     from .seed import simulation_tick
 
     logging.basicConfig(level=logging.INFO)
-    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="kontrol-agent") as executor:
+    from .call_worker import process_one_call, recover_expired_calls
+
+    with (ThreadPoolExecutor(max_workers=2, thread_name_prefix="kontrol-agent") as executor,
+          ThreadPoolExecutor(max_workers=1, thread_name_prefix="kontrol-transcription") as transcription):
         pending = []
+        call_future = None
         while True:
             try:
                 finished = [future for future in pending if future.done()]
@@ -380,8 +386,16 @@ def main() -> None:
                         state.worker_heartbeat = now()
                         simulation_tick(db, state)
                     recover_expired(db)
+                    recover_expired_calls(db)
                     dispatch_tick(db)
                     db.commit()
+                if call_future is None or call_future.done():
+                    finished_call, call_future = call_future, None
+                    # Clear a failed future before observing its error so a transient DB failure
+                    # cannot permanently disable the transcription slot.
+                    if finished_call is not None:
+                        finished_call.result()
+                    call_future = transcription.submit(process_one_call)
                 while len(pending) < 2:
                     pending.append(executor.submit(process_one))
             except Exception:

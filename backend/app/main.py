@@ -9,10 +9,11 @@ from sqlalchemy import select, text
 from sqlalchemy.orm.exc import StaleDataError
 
 from .config import settings
+from .call_api import router as call_router
 from .response_api import router as response_router
 from .dependencies import DB, Principal, Coordinator, current_user
 from .network import operation_lock, record
-from .db import SessionLocal, now, timestamp
+from .db import SessionLocal, now
 from .models import (
     AgentFinding,
     AgentRun,
@@ -20,34 +21,27 @@ from .models import (
     Evidence,
     Incident,
     IncidentReport,
-    PublicUpdate,
     Report,
     Resource,
     ResourceRequest,
     ResponsePlan,
     Simulation,
-    Subscription,
 )
 from .schemas import (
     IncidentAction,
-    Question,
-    ReportInput,
     RequestInput,
     ResourceInput,
     SimulationInput,
-    UpdateInput,
 )
 from .services import (
     apply_incident_action,
     approve_resource,
-    ingest_report,
-    publish_update,
     require_record,
 )
 
 app = FastAPI(
     title="Kontrol | Emergency Intelligence",
-    description="API for Kontrol Command, Kontrol Community, and Kontrol Agents.",
+    description="SIMULATION (NOT FOR EMERGENCY USE). Recorded-call dispatcher co-pilot.",
     version="1.0.0",
 )
 
@@ -78,13 +72,9 @@ def configuration():
 
 
 @app.get("/reports")
-def reports(db: DB, user: Principal):
-    """Residents see only their own private reports; coordinators see intake."""
+def reports(db: DB, user: Coordinator):
+    """Keep private source history visible to dispatchers independently of provider mode."""
     query = select(Report).order_by(Report.created_at.desc())
-    if settings.creao_mode == "live":
-        query = query.where(Report.simulation.is_(False))
-    if user.role != "coordinator":
-        query = query.where(Report.user_id == user.id)
     result = []
     for row in db.scalars(query.limit(200)):
         item = record(row, {"photo"})
@@ -95,22 +85,10 @@ def reports(db: DB, user: Principal):
     return result
 
 
-@app.post("/reports", status_code=201)
-def submit_report(data: ReportInput, db: DB, user: Principal):
-    """Acknowledge durable ingestion immediately, without waiting for agents."""
-    report = ingest_report(db, user, data)
-    db.commit()
-    return record(report, {"photo"})
-
-
 @app.get("/reports/{report_id}")
-def report_detail(report_id: str, db: DB, user: Principal):
-    """Protect report text and attached photos with ownership authorization."""
+def report_detail(report_id: str, db: DB, user: Coordinator):
+    """Return historical source text only after dispatcher authorization."""
     report = require_record(db, Report, report_id)
-    if settings.creao_mode == "live" and report.simulation:
-        raise HTTPException(404, "Report not found")
-    if user.role != "coordinator" and report.user_id != user.id:
-        raise HTTPException(404, "Report not found")
     return record(report)
 
 
@@ -121,7 +99,6 @@ def incidents(db: DB, user: Coordinator):
         record(row)
         for row in db.scalars(
             select(Incident)
-            .where(Incident.simulation.is_(False))
             .order_by(Incident.created_at.desc())
         )
     ]
@@ -131,8 +108,6 @@ def incidents(db: DB, user: Coordinator):
 def incident_detail(incident_id: str, db: DB, user: Coordinator):
     """Assemble the review dossier with original observations and execution evidence."""
     incident = require_record(db, Incident, incident_id)
-    if settings.creao_mode == "live" and incident.simulation:
-        raise HTTPException(404, "Incident not found")
     report_ids = select(IncidentReport.report_id).where(IncidentReport.incident_id == incident_id)
     return {
         **record(incident),
@@ -163,81 +138,10 @@ def incident_action(incident_id: str, data: IncidentAction, db: DB, user: Coordi
     return record(incident)
 
 
-@app.get("/updates")
-def updates(db: DB, user: Principal):
-    """Publish only approved snapshots to residents; drafts stay operational."""
-    query = select(PublicUpdate).order_by(PublicUpdate.created_at.desc())
-    if settings.creao_mode == "live":
-        query = query.where(PublicUpdate.simulation.is_(False))
-    if user.role != "coordinator":
-        query = query.where(PublicUpdate.status == "published")
-    return [record(r, {"author_id", "approved_by"}) for r in db.scalars(query)]
-
-
-@app.post("/updates", status_code=201)
-def create_update(data: UpdateInput, db: DB, user: Coordinator):
-    """Create a private draft with a fixed geographic incident snapshot."""
-    incident = require_record(db, Incident, data.incident_id)
-    update = PublicUpdate(
-        **data.model_dump(),
-        author_id=user.id,
-        latitude=incident.latitude,
-        longitude=incident.longitude,
-        category=incident.category,
-        severity=incident.severity,
-        simulation=incident.simulation,
-    )
-    db.add(update)
-    db.commit()
-    return record(update)
-
-
-@app.post("/updates/{update_id}/{action}")
-def update_action(update_id: str, action: str, db: DB, user: Coordinator):
-    """Make publication an explicit authorized operation and retain its history."""
-    update = db.scalar(select(PublicUpdate).where(PublicUpdate.id == update_id).with_for_update())
-    if not update:
-        raise HTTPException(404, "Update not found")
-    if action == "publish":
-        publish_update(db, update, user)
-    elif action == "submit" and update.status == "draft":
-        update.status = "pending"
-    elif action == "archive" and update.status == "published":
-        update.status = "archived"
-        db.add(
-            CoordinatorAction(
-                user_id=user.id, incident_id=update.incident_id, action="archive", details=update.title
-            )
-        )
-    else:
-        raise HTTPException(409, "Unsupported update transition")
-    db.commit()
-    return record(update)
-
-
-@app.get("/draft/{incident_id}")
-def assisted_draft(incident_id: str, db: DB, user: Coordinator):
-    """Build a bounded draft from actual stored assessment, for human editing."""
-    incident = require_record(db, Incident, incident_id)
-    finding = db.scalar(
-        select(AgentFinding)
-        .where(AgentFinding.incident_id == incident_id)
-        .order_by(AgentFinding.created_at.desc())
-    )
-    return {
-        "title": f"SIMULATION · {incident.category.title()} at {incident.location}",
-        "body": "SIMULATION / NOT FOR EMERGENCY USE. "
-        + (finding.assessment["summary"] if finding else incident.summary),
-        "audience": incident.location,
-        "source": finding.id if finding else incident.id,
-        "method": "Stored agent finding with template; coordinator review required",
-    }
-
-
 @app.get("/resources")
-def resources(db: DB, user: Principal):
+def resources(db: DB, user: Coordinator):
     """Keep the legacy seeded resource directory out of live product surfaces."""
-    if settings.creao_mode == "live":
+    if settings.creao_mode == "live" and not settings.live_simulation_enabled:
         return []
     query = select(Resource).order_by(Resource.name)
     if user.role != "coordinator":
@@ -263,7 +167,7 @@ def edit_resource(resource_id: str, data: ResourceInput, db: DB, user: Coordinat
 @app.get("/resource-requests")
 def resource_requests(db: DB, user: Coordinator):
     """Keep proposals against legacy seeded resources out of live product surfaces."""
-    if settings.creao_mode == "live":
+    if settings.creao_mode == "live" and not settings.live_simulation_enabled:
         return []
     return [
         record(row)
@@ -297,9 +201,6 @@ def approve_request(request_id: str, db: DB, user: Coordinator):
 def agents(db: DB, user: Coordinator):
     """Return actual persisted executions rather than fabricated activity."""
     query = select(AgentRun).order_by(AgentRun.created_at.desc()).limit(300)
-    if settings.creao_mode == "live":
-        live_plan_ids = select(ResponsePlan.id).where(ResponsePlan.simulation.is_(False))
-        query = query.where(AgentRun.plan_id.in_(live_plan_ids))
     return [record(r) for r in db.scalars(query)]
 
 
@@ -309,6 +210,10 @@ def retry_agent(run_id: str, db: DB, user: Coordinator):
     require_record(db, AgentRun, run_id)
     operation_lock(db)
     run = db.scalar(select(AgentRun).where(AgentRun.id == run_id).with_for_update())
+    from .call_services import require_exercise_execution
+
+    if run and db.get(Report, run.report_id).simulation:
+        require_exercise_execution()
     if not run or run.status != "failed" or run.attempts >= 3:
         raise HTTPException(409, "Only failed runs with fewer than three attempts can retry")
     if not run.plan_id:
@@ -338,134 +243,7 @@ def retry_agent(run_id: str, db: DB, user: Coordinator):
 def activity(db: DB, user: Coordinator):
     """Expose the human decision history to the operations dashboard."""
     query = select(CoordinatorAction).order_by(CoordinatorAction.created_at.desc()).limit(50)
-    if settings.creao_mode == "live":
-        live_incident_ids = select(Incident.id).where(Incident.simulation.is_(False))
-        query = query.where(CoordinatorAction.incident_id.in_(live_incident_ids))
     return [record(row) for row in db.scalars(query)]
-
-
-@app.get("/subscriptions")
-def subscriptions(db: DB, user: Principal):
-    """Return only the current resident's followed incidents."""
-    return list(db.scalars(select(Subscription.incident_id).where(Subscription.user_id == user.id)))
-
-
-@app.put("/subscriptions/{incident_id}")
-def follow(incident_id: str, db: DB, user: Principal):
-    """Follow only incidents that have a published resident-facing record."""
-    if not db.scalar(
-        select(PublicUpdate).where(
-            PublicUpdate.incident_id == incident_id, PublicUpdate.status == "published"
-        )
-    ):
-        raise HTTPException(404, "Public incident not found")
-    existing = db.scalar(
-        select(Subscription).where(Subscription.user_id == user.id, Subscription.incident_id == incident_id)
-    )
-    if not existing:
-        db.add(Subscription(user_id=user.id, incident_id=incident_id))
-        db.commit()
-    return {"following": True}
-
-
-@app.delete("/subscriptions/{incident_id}")
-def unfollow(incident_id: str, db: DB, user: Principal):
-    """Remove the current resident's subscription without affecting other users."""
-    existing = db.scalar(
-        select(Subscription).where(Subscription.user_id == user.id, Subscription.incident_id == incident_id)
-    )
-    if existing:
-        db.delete(existing)
-        db.commit()
-    return {"following": False}
-
-
-@app.post("/assistant")
-def assistant(data: Question, db: DB, user: Principal):
-    """Use deterministic retrieval over approved records, never emergency instruction generation."""
-    query = data.question.lower()
-    if any(word in query for word in ["evacuat", "should i", "safe to", "escape"]):
-        return {
-            "answer": "SIMULATION only. I cannot provide evacuation orders or real-world safety instructions from fictional data.",
-            "sources": [],
-        }
-    if user.role == "coordinator" and any(
-        word in query for word in ["situation", "pending", "operational", "review"]
-    ):
-        incidents = list(db.scalars(select(Incident).where(Incident.status == "needs_review")))
-        return {
-            "answer": f"SIMULATION: {len(incidents)} incidents await coordinator review. AI findings do not confer verification.",
-            "sources": [
-                {
-                    "id": row.id,
-                    "title": row.title,
-                    "text": f"{row.severity} priority · {row.status} · {row.location}",
-                    "href": "/coordinator/incidents",
-                }
-                for row in incidents[:8]
-            ],
-        }
-    if any(
-        word in query for word in ["shelter", "water", "food", "medical", "transport", "help", "resource"]
-    ):
-        category = next(
-            (c for c in ["shelter", "water", "food", "medical", "transportation"] if c in query), None
-        )
-        records = list(db.scalars(select(Resource).where(Resource.published.is_(True))))
-        if category:
-            records = [r for r in records if r.category == category]
-        sources = [
-            {
-                "id": r.id,
-                "title": r.name,
-                "text": f"{r.location}: {r.capacity - r.occupancy} available units. Last confirmed {r.confirmed_at.isoformat()}.",
-                "href": f"/resident/help#{r.id}",
-            }
-            for r in records[:5]
-        ]
-    else:
-        known_topic = any(
-            word in query
-            for word in [
-                "road",
-                "update",
-                "changed",
-                "hour",
-                "incident",
-                "fire",
-                "smoke",
-                "power",
-                "situation",
-            ]
-        )
-        records = (
-            list(
-                db.scalars(
-                    select(PublicUpdate)
-                    .where(PublicUpdate.status == "published")
-                    .order_by(PublicUpdate.published_at.desc())
-                )
-            )
-            if known_topic
-            else []
-        )
-        if "road" in query:
-            records = [r for r in records if r.category == "road"]
-        if "hour" in query:
-            records = [r for r in records if now().timestamp() - timestamp(r.published_at) <= 3600]
-        sources = [
-            {"id": r.id, "title": r.title, "text": r.body, "href": f"/resident/updates#{r.id}"}
-            for r in records[:5]
-        ]
-    return {
-        "answer": "SIMULATION / NOT FOR EMERGENCY USE. "
-        + (
-            "Published records matching your question are listed below. Location relevance must be checked against each record's named area."
-            if sources
-            else "No reliable published information is available for that question."
-        ),
-        "sources": sources,
-    }
 
 
 @app.get("/simulation")
@@ -507,7 +285,9 @@ async def events(request: Request, authorization: Annotated[str | None, Header()
 
     # Streaming connections must not occupy a database pool slot for their lifetime.
     with SessionLocal() as db:
-        current_user(db, authorization)
+        from .dependencies import coordinator
+
+        coordinator(current_user(db, authorization))
 
     async def stream():
         """Keep clients fresh without holding a database session during streaming."""
@@ -523,3 +303,6 @@ async def events(request: Request, authorization: Annotated[str | None, Header()
 
 
 app.include_router(response_router)
+
+
+app.include_router(call_router)

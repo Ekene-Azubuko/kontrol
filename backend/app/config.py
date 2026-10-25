@@ -1,5 +1,6 @@
 """Environment configuration shared by the API and worker."""
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -22,12 +23,22 @@ class Settings(BaseSettings):
     creao_planning_agent_id: str = ""
     creao_input_field: str = "context"
     creao_timeout: int = 180
-    creao_poll_seconds: float = 5
+    creao_poll_seconds: float = Field(default=2, ge=1, allow_inf_nan=False)
     worker_interval: float = 1
     mock_agent_seconds: float = 3
     dispatch_stage_seconds: float = 12
     live_simulation_enabled: bool = False
     demo_fleet_enabled: bool = False
+    transcription_mode: str = "mock"
+    transcription_api_key: str = ""
+    transcription_base_url: str = "https://api.openai.com/v1"
+    transcription_model: str = "gpt-4o-mini-transcribe"
+    transcription_timeout: float = 60
+    call_audio_dir: str = "/app/call_audio"
+    call_max_audio_bytes: int = 20 * 1024 * 1024
+    call_max_duration_seconds: float = 300
+    call_geocoding_url: str = "https://photon.komoot.io/api/"
+    call_intersections_url: str = "https://data.sf.gov/resource/gmfx-8h6i.json"
 
 
 settings = Settings()

@@ -8,6 +8,7 @@ from .db import now
 from .dependencies import DB, Coordinator
 from .models import (
     AgentRun,
+    Call,
     CommunicationLog,
     CoordinatorAction,
     DispatchAssignment,
@@ -18,7 +19,6 @@ from .models import (
     ProposedAssignment,
     Report,
     ResponsePlan,
-    User,
 )
 from .network import hospitals, operation_lock, record, vehicles
 from .response_schemas import DemoControl, GeneratePlan, PlanDecision
@@ -30,14 +30,13 @@ router = APIRouter()
 
 def plan_record(db, plan: ResponsePlan) -> dict:
     """Present the proposal with named resources, explanations and actual execution records."""
+    from .call_services import call_record
+
+    # Provider selection controls new execution, never access to persisted exercise history.
     assignments = []
     for row in db.scalars(select(ProposedAssignment).where(ProposedAssignment.plan_id == plan.id)):
         vehicle = db.get(EmergencyVehicle, row.vehicle_id)
         hospital = db.get(Hospital, row.hospital_id) if row.hospital_id else None
-        if not vehicle_enabled(vehicle.id, vehicle.simulation) or (
-            settings.creao_mode == "live" and hospital and hospital.simulation
-        ):
-            continue
         assignments.append(
             {
                 **record(row),
@@ -49,6 +48,7 @@ def plan_record(db, plan: ResponsePlan) -> dict:
         **record(plan),
         "incident": record(db.get(Incident, plan.incident_id)),
         "report_source": db.get(Report, plan.report_id).source,
+        "call": (call_record(db, call) if (call := db.scalar(select(Call).where(Call.report_id == plan.report_id))) else None),
         "assignments": assignments,
         "runs": [
             record(r)
@@ -68,7 +68,6 @@ def response_plans(db: DB, user: Coordinator, incident_id: str | None = None):
     """List operational plans, optionally scoped to an existing incident."""
     query = (
         select(ResponsePlan)
-        .where(ResponsePlan.simulation.is_(False))
         .order_by(ResponsePlan.created_at.desc())
     )
     if incident_id:
@@ -81,8 +80,6 @@ def response_plans(db: DB, user: Coordinator, incident_id: str | None = None):
 def response_plan(plan_id: str, db: DB, user: Coordinator):
     """Return a private plan dossier only after coordinator authorization."""
     plan = require_record(db, ResponsePlan, plan_id)
-    if settings.creao_mode == "live" and plan.simulation:
-        raise HTTPException(404, "Response plan not found")
     return plan_record(db, plan)
 
 
@@ -121,7 +118,7 @@ def generate_plan(incident_id: str, data: GeneratePlan, db: DB, user: Coordinato
 def hospital_network(db: DB, user: Coordinator, incident_id: str | None = None):
     """Expose only live hospital records to frontend clients."""
     rows = hospitals(db, require_record(db, Incident, incident_id) if incident_id else None)
-    return [row for row in rows if not row["simulation"]] if settings.creao_mode == "live" else rows
+    return [row for row in rows if not row["simulation"]] if settings.creao_mode == "live" and not settings.live_simulation_enabled else rows
 
 
 @router.get("/vehicles")
@@ -138,17 +135,12 @@ def dispatches(db: DB, user: Coordinator):
     query = (
         select(DispatchAssignment)
         .join(ResponsePlan, ResponsePlan.id == DispatchAssignment.plan_id)
-        .where(ResponsePlan.simulation.is_(False))
         .order_by(DispatchAssignment.created_at.desc())
         .limit(100)
     )
     for row in db.scalars(query):
         vehicle = db.get(EmergencyVehicle, row.vehicle_id)
         hospital = db.get(Hospital, row.hospital_id) if row.hospital_id else None
-        if not vehicle_enabled(vehicle.id, vehicle.simulation) or (
-            settings.creao_mode == "live" and hospital and hospital.simulation
-        ):
-            continue
         result.append(
             {
                 **record(row),
@@ -164,8 +156,6 @@ def dispatches(db: DB, user: Coordinator):
 def communications(db: DB, user: Coordinator):
     """Read internal messages associated with live responses."""
     query = select(CommunicationLog).order_by(CommunicationLog.created_at.desc()).limit(200)
-    if settings.creao_mode == "live":
-        query = query.where(CommunicationLog.simulation.is_(False))
     return [
         {**record(row), "incident_title": db.get(Incident, row.incident_id).title}
         for row in db.scalars(query)
@@ -193,7 +183,7 @@ def acknowledge(message_id: str, db: DB, user: Coordinator):
 @router.post("/response-demo")
 def response_demo(data: DemoControl, db: DB, user: Coordinator):
     """Start a prepared report or reset only this explicitly simulated exercise."""
-    from .response_seed import reset_response_demo, start_demo
+    from .response_seed import reset_response_demo
 
     if not settings.demo_auth or settings.app_env == "production":
         raise HTTPException(403, "Demo controls are disabled")
@@ -204,7 +194,6 @@ def response_demo(data: DemoControl, db: DB, user: Coordinator):
         return {"status": "reset", "simulation": True}
     if settings.creao_mode == "live" and not settings.live_simulation_enabled:
         raise HTTPException(409, "Prepared demo reports require LIVE_SIMULATION_ENABLED in live mode")
-    resident = db.scalar(select(User).where(User.role == "resident"))
-    report = start_demo(db, resident)
-    db.commit()
-    return {"status": "started", "report_id": report.id, "simulation": True}
+    from .call_api import sample_call
+
+    return sample_call("collision", db, user)

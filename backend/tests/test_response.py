@@ -4,6 +4,7 @@ from datetime import timedelta
 import pytest
 from sqlalchemy import select
 from app import worker
+from call_helpers import submit_call
 from app.config import settings
 from app.db import now
 from app.dispatch_simulation import dispatch_tick
@@ -14,12 +15,9 @@ from test_workflow import RESIDENT, COORDINATOR, report_data  # noqa: F401
 
 def generated_plan(client, casualties=2):
     """Drive a real resident report through all four deterministic worker stages."""
-    response = client.post(
-        "/reports",
-        headers=RESIDENT,
-        json={**report_data(), "category": "collision", "reported_casualties": casualties},
+    response = submit_call(client, {**report_data(), "category": "collision", "reported_casualties": casualties},
     )
-    assert response.status_code == 201
+    assert response.status_code == 200
     for _ in range(4):
         assert worker.process_one()
     plan = client.get("/response-plans", headers=COORDINATOR).json()[0]
@@ -98,7 +96,7 @@ def test_full_response_and_exactly_once_arrival(system, monkeypatch):
     assert sum(h["occupied_beds"] for h in final) == sum(h["occupied_beds"] for h in baseline) + 2
     assert sum(h["reserved_beds"] for h in final) == 0
     assert client.get(f"/response-plans/{plan['id']}", headers=COORDINATOR).json()["status"] == "completed"
-    assert client.get("/reports", headers=RESIDENT).json()[0]["status"] == "completed"
+    assert client.get("/reports", headers=COORDINATOR).json()[0]["status"] == "completed"
     assert all(v["status"] == "available" for v in client.get("/vehicles", headers=COORDINATOR).json())
     assert decide(client, approved.json(), "revise").status_code == 409
 
@@ -106,7 +104,7 @@ def test_full_response_and_exactly_once_arrival(system, monkeypatch):
 def test_parallel_barrier_and_no_early_reservations(system):
     """Queue both evaluations together and wait for both before creating exactly one planner job."""
     client, factory = system
-    client.post("/reports", headers=RESIDENT, json=report_data())
+    submit_call(client, report_data())
     worker.process_one()
     with factory() as db:
         assert {r.stage for r in db.scalars(select(AgentRun).where(AgentRun.status == "queued"))} == {
@@ -207,10 +205,7 @@ def test_constrained_approval_still_rechecks_vehicle_availability(system):
 def test_capacity_consumed_between_evaluation_and_planning(system):
     """A newly unavailable fleet produces a constrained plan, without inventing assignments or failing the workflow."""
     client, factory = system
-    client.post(
-        "/reports",
-        headers=RESIDENT,
-        json={**report_data(), "category": "collision", "reported_casualties": 2},
+    submit_call(client, {**report_data(), "category": "collision", "reported_casualties": 2},
     )
     for _ in range(3):
         worker.process_one()

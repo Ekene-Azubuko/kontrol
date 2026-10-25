@@ -16,8 +16,7 @@ import type { Role } from "./types";
 const AuthContext = createContext<{
   token: string;
   role: Role;
-  switchRole: (role: Role) => void;
-}>({ token: "", role: "resident", switchRole: () => {} });
+}>({ token: "", role: "coordinator" });
 
 /** Parse server errors without hiding validation failures or permission errors. */
 export async function request<T>(
@@ -30,9 +29,9 @@ export async function request<T>(
     method,
     headers: {
       Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
+      ...(body instanceof FormData ? {} : { "Content-Type": "application/json" }),
     },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: body === undefined ? undefined : body instanceof FormData ? body : JSON.stringify(body),
   });
   const data = await response.json();
   if (!response.ok)
@@ -43,7 +42,7 @@ export async function request<T>(
     );
   return data as T;
 }
-/** Select the built-in portal identity without exposing login or account management. */
+/** Use the trusted-local dispatcher identity without exposing account management. */
 export function Providers({ children }: { children: ReactNode }) {
   const [client] = useState(
     () =>
@@ -51,16 +50,11 @@ export function Providers({ children }: { children: ReactNode }) {
         defaultOptions: { queries: { retry: 1, staleTime: 2500 } },
       }),
   );
-  const [role, setRole] = useState<Role>("resident");
-  const [token, setToken] = useState("demo-resident");
-  function switchRole(next: Role) {
-    client.clear();
-    setRole(next);
-    setToken(`demo-${next}`);
-  }
+  const role: Role = "coordinator";
+  const token = "demo-coordinator";
   return (
     <QueryClientProvider client={client}>
-      <AuthContext.Provider value={{ token, role, switchRole }}>
+      <AuthContext.Provider value={{ token, role }}>
         {children}
       </AuthContext.Provider>
     </QueryClientProvider>

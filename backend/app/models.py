@@ -65,6 +65,37 @@ class IncidentReport(Base):
     report_id: Mapped[str] = mapped_column(ForeignKey("reports.id"))
 
 
+class Call(Base):
+    """Private simulated recording with immutable machine output and versioned human review."""
+
+    __tablename__ = "calls"
+    status: Mapped[str] = mapped_column(default="queued", index=True)
+    received_at: Mapped[datetime] = mapped_column(default=now)
+    sample_key: Mapped[str | None]
+    audio_key: Mapped[str]
+    audio_content_type: Mapped[str]
+    duration_seconds: Mapped[float]
+    caller_latitude: Mapped[float | None]
+    caller_longitude: Mapped[float | None]
+    caller_accuracy_m: Mapped[float | None]
+    original_transcript: Mapped[str | None]
+    detected_location: Mapped[dict | None] = mapped_column(JSON(none_as_null=True))
+    reviewed_transcript: Mapped[str | None]
+    confirmed_latitude: Mapped[float | None]
+    confirmed_longitude: Mapped[float | None]
+    confirmed_address: Mapped[str | None]
+    confirmed_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
+    confirmed_at: Mapped[datetime | None]
+    report_id: Mapped[str | None] = mapped_column(ForeignKey("reports.id"), unique=True)
+    simulation: Mapped[bool] = mapped_column(default=True)
+    attempts: Mapped[int] = mapped_column(default=0)
+    claim_token: Mapped[str | None]
+    lease_expires_at: Mapped[datetime | None]
+    transcription_error: Mapped[str | None]
+    version: Mapped[int] = mapped_column(default=1)
+    __mapper_args__ = {"version_id_col": version}
+
+
 class Evidence(Base):
     """A traceable piece of evidence, with uncertainty explicitly retained."""
 

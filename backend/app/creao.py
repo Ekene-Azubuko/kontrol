@@ -176,7 +176,7 @@ def validate_completed_result(stage: str, result: dict, client: httpx.Client) ->
 
 
 def json_text(value: str) -> str:
-    """Accept bare JSON or one unambiguous fenced result, including CREAO's surrounding prose."""
+    """Extract one complete JSON document without repairing fields or choosing between candidates."""
     stripped = value.strip()
     try:
         json.loads(stripped)
@@ -184,7 +184,15 @@ def json_text(value: str) -> str:
     except json.JSONDecodeError:
         pass
     if "```" not in stripped:
-        return stripped
+        start = re.search(r"[\[{]", stripped)
+        if start is None:
+            return stripped
+        # CREAO chatText can prepend progress prose without a Markdown fence. Decode
+        # from the first opening delimiter, never a nested object inside malformed JSON.
+        _, end = json.JSONDecoder().raw_decode(stripped, start.start())
+        if re.search(r"[\[\]{}]", stripped[end:]):
+            raise ValueError("CREAO text must contain exactly one complete JSON document")
+        return stripped[start.start():end]
     # Never choose between multiple documents; an agent must provide one canonical result.
     if stripped.count("```") != 2:
         raise ValueError("CREAO text must contain exactly one JSON code block")

@@ -36,6 +36,11 @@ def create_plan(
     db: Session, incident: Incident, report: Report, note: str = "Initial response assessment"
 ) -> ResponsePlan:
     """Start one versioned workflow, without autonomously revising an existing response."""
+    from .call_services import require_exercise_execution
+    from .call_location import AUTOMATIC_LOCATION_LIMITATION, EDITED_LOCATION_LIMITATION
+
+    if report.simulation:
+        require_exercise_execution()
     db.flush()
     latest = db.scalar(
         select(ResponsePlan)
@@ -49,6 +54,10 @@ def create_plan(
         report_id=report.id,
         revision=latest.revision + 1 if latest else 1,
         revision_note=note,
+        constraints=[
+            limitation for limitation in [AUTOMATIC_LOCATION_LIMITATION, EDITED_LOCATION_LIMITATION]
+            if latest and limitation in latest.constraints
+        ],
         simulation=report.simulation,
     )
     db.add(plan)
@@ -59,8 +68,12 @@ def create_plan(
 
 
 def validate_assignments(
-    requirements: dict, assignments: list[dict], hospital_rows: list[dict], vehicle_rows: list[dict],
-    *, allow_incomplete: bool = False,
+    requirements: dict,
+    assignments: list[dict],
+    hospital_rows: list[dict],
+    vehicle_rows: list[dict],
+    *,
+    allow_incomplete: bool = False,
 ) -> None:
     """Recheck resource integrity while allowing a coordinator to accept unresolved planning information."""
     expected_patients = requirements.get("estimated_patients")
@@ -111,8 +124,6 @@ def validate_stage(stage: str, output: dict, payload: dict) -> None:
     if stage == "intake":
         if output["incident_id"] != agent_input["incident_id"]:
             raise ValueError("Intake changed the incident ID")
-        if output["reported_injuries"] != agent_input["reported_injuries"]:
-            raise ValueError("Intake changed the reported injury count")
         return
     if output["incident_id"] != agent_input["incident_id"]:
         raise ValueError(f"{stage.title()} changed the incident ID")
@@ -132,16 +143,13 @@ def validate_stage(stage: str, output: dict, payload: dict) -> None:
             raise ValueError("Dispatch agent referenced an unknown, duplicate, or unavailable vehicle")
         return
     recommended_hospitals = {
-        name.casefold()
-        for name in agent_input["hospital_result"].get("recommended_hospitals", [])
+        name.casefold() for name in agent_input["hospital_result"].get("recommended_hospitals", [])
     }
     recommended_vehicles = {
-        row["vehicle_id"]
-        for row in agent_input["dispatch_result"].get("recommended_vehicles", [])
+        row["vehicle_id"] for row in agent_input["dispatch_result"].get("recommended_vehicles", [])
     }
     if any(
-        row["hospital_name"].casefold() not in recommended_hospitals
-        for row in output["hospital_assignments"]
+        row["hospital_name"].casefold() not in recommended_hospitals for row in output["hospital_assignments"]
     ):
         raise ValueError("Planner referenced a hospital not recommended by Hospital Finder")
     if any(row["vehicle_id"] not in recommended_vehicles for row in output["vehicle_assignments"]):
@@ -200,7 +208,9 @@ def decide_plan(db: Session, plan_id: str, user: User, decision: PlanDecision) -
             # Approval authorizes response; it does not confirm unknown patients or hospital capacity.
             reserved_beds = (
                 proposal.patients
-                if hospital and hospital.total_beds is not None and hospital.occupied_beds is not None
+                if hospital
+                and hospital.total_beds is not None
+                and hospital.occupied_beds is not None
                 and proposal.patients is not None
                 else 0
             )
@@ -221,6 +231,7 @@ def decide_plan(db: Session, plan_id: str, user: User, decision: PlanDecision) -
                 CommunicationLog(
                     plan_id=plan.id,
                     incident_id=incident.id,
+                    simulation=plan.simulation,
                     recipient=vehicle.call_sign,
                     recipient_type="responder",
                     message=f"Approved response assignment to {incident.location}; "
@@ -236,18 +247,20 @@ def decide_plan(db: Session, plan_id: str, user: User, decision: PlanDecision) -
                 CommunicationLog(
                     plan_id=plan.id,
                     incident_id=incident.id,
+                    simulation=plan.simulation,
                     recipient=network[hospital_id].name,
                     recipient_type="hospital",
-                message=f"{patients} patient(s) expected from {incident.location}. Beds reserved for approved plan {plan.id[:8]}.",
+                    message=f"{patients} patient(s) expected from {incident.location}. Beds reserved for approved plan {plan.id[:8]}.",
                 )
             )
         db.add(
             CommunicationLog(
                 plan_id=plan.id,
                 incident_id=incident.id,
+                simulation=plan.simulation,
                 recipient="Kontrol coordination",
                 recipient_type="coordination",
-            message=f"Coordinator approved response at {incident.location}. {len(proposals)} unit(s) assigned.",
+                message=f"Dispatcher approved response at {incident.location}. {len(proposals)} unit(s) assigned.",
             )
         )
     db.add(
@@ -256,8 +269,11 @@ def decide_plan(db: Session, plan_id: str, user: User, decision: PlanDecision) -
             incident_id=incident.id,
             action=f"plan_{decision.action}",
             details=f"Plan revision {plan.revision}: {decision.note}"
-            + (f" Unresolved constraints accepted: {'; '.join(plan.constraints)}"
-               if decision.action == "approve" and not plan.feasible else ""),
+            + (
+                f" Unresolved constraints accepted: {'; '.join(plan.constraints)}"
+                if decision.action == "approve" and not plan.feasible
+                else ""
+            ),
         )
     )
     db.flush()

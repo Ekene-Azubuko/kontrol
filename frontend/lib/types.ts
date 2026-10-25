@@ -1,5 +1,5 @@
 import type { AgentOutput } from "./response-types";
-export type Role = "coordinator" | "resident";
+export type Role = "coordinator";
 export type Incident = {
   id: string;
   title: string;

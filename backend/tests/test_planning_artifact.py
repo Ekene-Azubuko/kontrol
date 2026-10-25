@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy import select
 
 from app import worker
+from call_helpers import submit_call
 from app.config import settings
 from app.demo_fleet import seed_demo_fleet
 from app.db import now
@@ -44,6 +45,7 @@ def test_planning_artifact_supports_coordinator_approval_with_unknown_capacity(
     hospital_name = artifact["hospital_assignments"][0]["hospital_name"]
     hospital_address = "1001 Potrero Avenue, San Francisco, CA 94110"
     monkeypatch.setattr(settings, "creao_mode", "live")
+    monkeypatch.setattr(settings, "live_simulation_enabled", True)
     monkeypatch.setattr(settings, "demo_fleet_enabled", True)
     with factory() as db:
         seed_demo_fleet(db)
@@ -96,11 +98,11 @@ def test_planning_artifact_supports_coordinator_approval_with_unknown_capacity(
             return download_result("planning", json.dumps({**artifact, "incident_id": incident_id}))
 
     monkeypatch.setattr(worker, "get_adapter", ArtifactPipeline)
-    response = client.post("/reports", headers=RESIDENT, json={
+    response = submit_call(client, {
         **report_data(), "category": "collision", "reported_casualties": 1,
         "description": "Two vehicles collided at Market and 8th; one person is reported injured.",
     })
-    assert response.status_code == 201
+    assert response.status_code == 200
     for _ in range(3):
         assert worker.process_one()
     if legacy_missing_hospital:

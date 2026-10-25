@@ -39,13 +39,13 @@ def require_record(db: Session, model, record_id: str):
 
 
 def ingest_report(
-    db: Session, user: User, data: ReportInput, source: str = "resident", incident: Incident | None = None
+    db: Session, user: User, data: ReportInput, source: str = "resident", incident: Incident | None = None, *, simulation: bool = False
 ) -> Report:
     """Persist the original report and intake job together before acknowledging it."""
     report = Report(
         user_id=user.id,
         source=source,
-        simulation=source != "resident",
+        simulation=simulation,
         **data.model_dump(),
     )
     db.add(report)
@@ -57,7 +57,7 @@ def ingest_report(
             latitude=data.latitude,
             longitude=data.longitude,
             location=data.location,
-            simulation=source != "resident",
+            simulation=simulation,
         )
         db.add(incident)
     db.flush()

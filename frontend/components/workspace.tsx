@@ -3,20 +3,15 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
   Activity,
-  ArrowLeftRight,
   Bell,
   Bot,
   ChevronDown,
   ChevronLeft,
   CircleHelp,
   Flame,
-  House,
   LayoutDashboard,
-  MapPin,
   Menu,
-  MessageSquare,
   Radio,
-  Send,
   Ambulance,
   Hospital,
   ClipboardList,
@@ -26,8 +21,8 @@ import { LiveUpdates, useAuth } from "@/lib/api";
 import type { Role } from "@/lib/types";
 import { branding } from "@/lib/branding";
 import { CoordinatorView } from "./coordinator";
-import { ResidentView } from "./resident";
 const coordinatorLinks = [
+  { slug: "calls", label: "Recorded Calls", icon: Radio },
   { slug: "overview", label: "Command Center", icon: LayoutDashboard },
   { slug: "incidents", label: "Incidents", icon: Flame },
   { slug: "response-plans", label: "Response Plans", icon: ClipboardList },
@@ -36,25 +31,13 @@ const coordinatorLinks = [
   { slug: "communications", label: "Communications", icon: Radio },
   { slug: "agents", label: "Agent Operations", icon: Bot },
 ];
-const residentLinks = [
-  { slug: "home", label: "Home", icon: House },
-  { slug: "updates", label: "Updates", icon: Bell },
-  { slug: "report", label: "Report", icon: Send },
-  { slug: "help", label: "Find help", icon: MapPin },
-  { slug: "assistant", label: "Assistant", icon: MessageSquare },
-];
-
-/** Open each portal directly while selecting its built-in application identity. */
+/** Render the dispatcher exercise workspace with its built-in local identity. */
 export function Workspace({ role, page }: { role: Role; page: string }) {
   const auth = useAuth();
-  const interfaceName =
-    role === "coordinator" ? branding.command : branding.community;
+  const interfaceName = branding.command;
   const [collapsed, setCollapsed] = useState(false);
   const [mobile, setMobile] = useState(false);
   const [clock, setClock] = useState("");
-  useEffect(() => {
-    if (auth.role !== role) auth.switchRole(role);
-  }, [auth, role]);
   useEffect(() => {
     const tick = () =>
       setClock(new Date().toLocaleTimeString([], { hour12: false }));
@@ -62,12 +45,12 @@ export function Workspace({ role, page }: { role: Role; page: string }) {
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, []);
-  const links = role === "coordinator" ? coordinatorLinks : residentLinks;
+  const links = coordinatorLinks;
   return (
     <div className={`app-shell ${role} ${collapsed ? "collapsed" : ""}`}>
       <aside className={`sidebar ${mobile ? "mobile-open" : ""}`}>
         <Link
-          href={`/${role}/${role === "coordinator" ? "overview" : "home"}`}
+          href="/coordinator/overview"
           className="brand"
         >
           <span className="brand-mark">
@@ -89,12 +72,12 @@ export function Workspace({ role, page }: { role: Role; page: string }) {
           <span className="workspace-avatar">SF</span>
           <div>
             <strong>{interfaceName}</strong>
-            <small>Live response operations</small>
+            <small>Dispatcher exercise workspace</small>
           </div>
           <ChevronDown size={14} />
         </div>
         <div className="nav-label">
-          {role === "coordinator" ? "OPERATIONS" : "YOUR COMMUNITY"}
+          OPERATIONS
         </div>
         <nav>
           {links.map(({ slug, label, icon: Icon }) => (
@@ -111,19 +94,6 @@ export function Workspace({ role, page }: { role: Role; page: string }) {
           ))}
         </nav>
         <div className="sidebar-bottom">
-          <Link
-            className="portal-link"
-            href={
-              role === "coordinator"
-                ? "/resident/home"
-                : "/coordinator/overview"
-            }
-          >
-            <ArrowLeftRight size={16} />
-            <span>
-              {role === "coordinator" ? branding.community : branding.command}
-            </span>
-          </Link>
           <button
             className="collapse-control"
             onClick={() => setCollapsed(!collapsed)}
@@ -132,13 +102,11 @@ export function Workspace({ role, page }: { role: Role; page: string }) {
             <span>Collapse sidebar</span>
           </button>
           <div className="profile">
-            <div className="avatar">{role === "coordinator" ? "KC" : "KR"}</div>
+            <div className="avatar">KD</div>
             <div>
-              <strong>{role === "coordinator" ? "Operations desk" : "Report portal"}</strong>
+              <strong>Operations desk</strong>
               <small>
-                {role === "coordinator"
-                  ? "Incident coordinator"
-                  : "Community resident"}
+                Dispatcher
               </small>
             </div>
               <CircleHelp size={16} />
@@ -161,46 +129,30 @@ export function Workspace({ role, page }: { role: Role; page: string }) {
             </span>
           </div>
           <div className="topbar-right">
-            <span className="scenario-pill"><span className="live-dot" /> LIVE</span>
+            <span className="scenario-pill"><span className="live-dot" /> SIMULATION</span>
             <span className="clock">
               {clock || "—"} <small>LOCAL</small>
             </span>
             <Bell size={17} />
           </div>
         </header>
+        <div className="simulation-banner" role="note">SIMULATION (NOT FOR EMERGENCY USE) · Fictional recordings and simulated resource assignments</div>
         {auth.role === role && (
           <>
             <LiveUpdates />
             <div className="page-content">
-              {role === "coordinator" ? (
-                <CoordinatorView page={page} />
-              ) : (
-                <ResidentView page={page} />
-              )}
+              <CoordinatorView page={page} />
             </div>
           </>
         )}
         <footer>
-          <span>LIVE OPERATIONS</span>
+          <span>SIMULATION (NOT FOR EMERGENCY USE)</span>
           <span>
             {branding.product} · Human decisions. Traceable intelligence.
           </span>
         </footer>
       </main>
-      {role === "resident" && (
-        <nav className="bottom-nav">
-          {residentLinks.map(({ slug, label, icon: Icon }) => (
-            <Link
-              key={slug}
-              href={`/resident/${slug}`}
-              className={page === slug ? "active" : ""}
-            >
-              <Icon size={19} />
-              <span>{label}</span>
-            </Link>
-          ))}
-        </nav>
-      )}
+
     </div>
   );
 }

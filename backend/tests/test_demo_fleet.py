@@ -77,7 +77,7 @@ def test_fleet_only_reaches_dispatch_http_request(system, monkeypatch, stage):
     if stage in {"intake", "hospital"}:
         assert "vehicles" not in payload
     keys = {
-        "intake": {"incident_id", "description", "location", "reported_injuries"},
+        "intake": {"incident_id", "transcript", "confirmed_location", "call_received_at", "category"},
         "hospital": {"incident_id", "incident_type", "incident_location", "reported_injuries",
                      "required_hospital_capabilities", "search_radius_miles", "hospital_statuses"},
         "dispatch": {"incident_id", "incident_type", "incident_location", "required_response_types",

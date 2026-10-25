@@ -21,6 +21,7 @@ def vehicle_enabled(vehicle_id: str, simulation: bool) -> bool:
     """Allow only this explicitly opted-in demo fleet alongside real vehicles in live mode."""
     return (
         settings.creao_mode == "mock"
+        or settings.live_simulation_enabled
         or not simulation
         or (settings.demo_fleet_enabled and vehicle_id in FLEET_IDS.values())
     )
