@@ -8,6 +8,34 @@ For phone number provisioning, signed public ingress, browser answering, streami
 
 ## Run locally
 
+### VPS HTTPS deployment
+
+**SIMULATION (NOT FOR EMERGENCY USE).** The `prod` Compose profile adds Nginx and automatic Let's Encrypt issuance/renewal for `creaokontrol.duckdns.org`. All HTTPS requests go to `frontend:3000`; the frontend continues forwarding `/api` to the private backend.
+
+Point the DuckDNS hostname at your VPS public IP (and ensure any AAAA record points to working IPv6). Allow inbound TCP ports 80 and 443 in the VPS/provider firewall, and free those ports from any existing web server. Port 80 must remain reachable for certificate renewal.
+
+On the VPS, copy `.env.example` to `.env` if needed, configure provider credentials, and set a strong `POSTGRES_PASSWORD` before initializing a new database. Changing this variable does not change the password of an existing database. `CERTBOT_EMAIL` defaults to `ekeneazubuko2935@gmail.com`.
+
+```sh
+docker compose --profile prod up --build -d
+docker compose --profile prod logs -f nginx
+```
+
+Open https://creaokontrol.duckdns.org once certificate issuance succeeds. Migrations and simulation seeding run automatically during backend startup. The `nginx_secrets` volume persists certificates across container recreation; do not remove it with `down -v`. The image's built-in HTTP server handles ACME challenges and redirects other HTTP requests to HTTPS, following its [configuration guidance](https://github.com/JonasAlfredsson/docker-nginx-certbot/blob/master/docs/good_to_know.md). Configuration lives in `user_conf.d/kontrol.conf`.
+
+After editing Nginx configuration, validate and reload:
+
+```sh
+docker compose --profile prod exec nginx nginx -t
+docker compose --profile prod kill -s HUP nginx
+curl -I http://creaokontrol.duckdns.org
+curl -I https://creaokontrol.duckdns.org
+```
+
+Frontend and backend host ports remain bound to loopback. This profile configures production TLS only: it does not change application authentication. The current dispatcher UI uses demo credentials. `APP_ENV=production` requires `DEMO_AUTH=false`, which disables those credentials; a production identity flow is not implemented. Restrict demo access to trusted users at the network boundary. Optional phone ingress still requires its separate routing described in `backend/LIVE_CALLS.md`.
+
+### Local startup
+
 Copy `.env.example` to `.env`, then run:
 
 ```sh
