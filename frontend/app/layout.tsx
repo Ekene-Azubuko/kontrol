@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Providers } from "@/lib/api";
 import { branding } from "@/lib/branding";
 import { StartupScreen } from "@/components/startup-screen";
+import { LivePhoneProvider } from "@/lib/live-phone";
+import { LivePhoneNotice } from "@/components/live-phone";
 import "@fontsource-variable/inter";
 import "./globals.css";
 export const metadata: Metadata = {
@@ -22,7 +24,10 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <Providers>
-          <StartupScreen>{children}</StartupScreen>
+          <LivePhoneProvider>
+            <StartupScreen>{children}</StartupScreen>
+            <LivePhoneNotice />
+          </LivePhoneProvider>
         </Providers>
       </body>
     </html>

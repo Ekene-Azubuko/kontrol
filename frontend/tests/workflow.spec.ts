@@ -3,6 +3,7 @@ import type {
   RecordedCall,
   ResponsePlan,
   Hospital,
+  Dispatch,
 } from "../lib/response-types";
 const headers = { Authorization: "Bearer demo-coordinator" };
 
@@ -112,8 +113,8 @@ test("edit address and find location again", async ({ page, request }) => {
   expect(errors).toEqual([]);
 });
 
-/** Exercise real proxy uploads, transcript review, durable agents, approval and simulated arrival. */
-test("sample call → animated location → call type → agents → approval → completion", async ({
+/** Exercise real proxy uploads, transcript review, durable agents and stationary approved markers. */
+test("sample call → animated location → call type → agents → static approved markers", async ({
   page,
   request,
 }) => {
@@ -204,7 +205,7 @@ test("sample call → animated location → call type → agents → approval �
       },
       { timeout: 45000 },
     )
-    .toBe("awaiting_approval");
+    .toBe("needs_information");
   expect(plan!.runs.map((run) => run.stage).sort()).toEqual([
     "dispatch",
     "hospital",
@@ -234,42 +235,31 @@ test("sample call → animated location → call type → agents → approval �
   await dialog
     .getByRole("button", { name: "Approve plan", exact: true })
     .click();
-  await expect
-    .poll(
-      async () =>
-        (
-          await (
-            await request.get(`/api/response-plans/${review.plan_id}`, {
-              headers,
-            })
-          ).json()
-        ).status,
-      { timeout: 120000 },
-    )
-    .toBe("completed");
-  const final: Hospital[] = await (
-    await request.get("/api/hospitals", { headers })
-  ).json();
-  expect(
-    final.reduce((sum, hospital) => sum + (hospital.occupied_beds || 0), 0),
-  ).toBe(
-    baseline.reduce((sum, hospital) => sum + (hospital.occupied_beds || 0), 0) +
-      2,
+  await expect.poll(async () => (
+    await (await request.get(`/api/response-plans/${review.plan_id}`, { headers })).json()
+  ).status).toBe("approved");
+  await dialog.getByRole("button", { name: "Close details" }).click();
+  await page.goto("/coordinator/overview");
+  await expect(page.locator(".map-wrap[data-ready=true]")).toBeVisible();
+  const markers = page.locator(".map-marker.vehicle");
+  await expect(markers).toHaveCount(plan!.assignments.length);
+  const positions = await markers.evaluateAll((elements) => elements.map((element) => (element as HTMLElement).style.transform));
+  // Observe beyond the retired timer's first travel step, including ordinary SSE refreshes.
+  await page.waitForTimeout(14000);
+  await expect(markers).toHaveCount(plan!.assignments.length);
+  expect(await markers.evaluateAll((elements) => elements.map((element) => (element as HTMLElement).style.transform))).toEqual(positions);
+  const persisted: ResponsePlan = await (await request.get(`/api/response-plans/${review.plan_id}`, { headers })).json();
+  expect(persisted.status).toBe("approved");
+  const dispatches: Dispatch[] = await (await request.get("/api/dispatches", { headers })).json();
+  expect(dispatches.filter((dispatch) => dispatch.plan_id === persisted.id).every(
+    (dispatch) => dispatch.status === "assigned" && dispatch.progress === 0 && !dispatch.released_at,
+  )).toBeTruthy();
+  const final: Hospital[] = await (await request.get("/api/hospitals", { headers })).json();
+  expect(final.reduce((sum, hospital) => sum + (hospital.occupied_beds || 0), 0)).toBe(
+    baseline.reduce((sum, hospital) => sum + (hospital.occupied_beds || 0), 0),
   );
-  const messages = await (
-    await request.get("/api/communications", { headers })
-  ).json();
-  expect(
-    messages.some(
-      (message: { plan_id: string; message: string }) =>
-        message.plan_id === review.plan_id &&
-        message.message.includes("arrived"),
-    ),
-  ).toBeTruthy();
-  await page.screenshot({
-    path: "test-results/call-plan-completed.png",
-    fullPage: true,
-  });
+  expect((await request.get("/api/communications", { headers })).status()).toBe(404);
+  await page.screenshot({ path: "test-results/call-plan-static-markers.png", fullPage: true });
   expect(errors).toEqual([]);
 });
 
@@ -322,6 +312,9 @@ test("dispatcher navigation and retired resident routes", async ({ page }) => {
   for (const route of ["home", "updates", "report", "help", "assistant"]) {
     expect((await page.goto(`/resident/${route}`))!.status()).toBe(404);
   }
+  for (const route of ["resources", "hospitals", "communications"]) {
+    expect((await page.goto(`/coordinator/${route}`))!.status()).toBe(404);
+  }
   await page.goto("/");
   await expect(page).toHaveURL(/\/coordinator\/overview$/);
   await page.setViewportSize({ width: 390, height: 844 });
@@ -331,8 +324,6 @@ test("dispatcher navigation and retired resident routes", async ({ page }) => {
     "incidents",
     "response-plans",
     "dispatch",
-    "hospitals",
-    "communications",
     "agents",
   ]) {
     await page.goto(`/coordinator/${route}`);

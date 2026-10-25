@@ -200,7 +200,7 @@ def test_upgrade_0004_preserves_history(postgres_system):
     with factory() as db:
         historical_user = db.scalar(select(User).where(User.role == "resident"))
         user_id = historical_user.id
-        from app.response_seed import response_report
+        from legacy_network import response_report
         from app.services import ingest_report
 
         report = ingest_report(db, historical_user, response_report(), simulation=False)
@@ -220,8 +220,11 @@ def test_upgrade_0004_preserves_history(postgres_system):
         db.add_all([update, subscription])
         db.flush()
         report_id, update_id, subscription_id = report.id, update.id, subscription.id
-        # The fixture represents an existing pre-call installation; removing only the empty new table
-        # lets Alembic apply the actual additive migration to that installation.
+        # The fixture represents a pre-call installation; remove empty later tables in dependency order.
+        from app.models import LiveCallSession, LiveTranscriptSegment
+
+        LiveTranscriptSegment.__table__.drop(db.connection())
+        LiveCallSession.__table__.drop(db.connection())
         Call.__table__.drop(db.connection())
         db.commit()
     env = {**os.environ, "DATABASE_URL": os.environ["TEST_DATABASE_URL"]}

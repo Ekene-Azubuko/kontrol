@@ -21,6 +21,9 @@ from app.config import settings
 @pytest.fixture()
 def system(monkeypatch, tmp_path):
     """Use an isolated database with real API dependencies and worker sessions."""
+    # Tests must stay offline even when settings were imported before pytest collection.
+    monkeypatch.setattr(settings, "creao_mode", "mock")
+    monkeypatch.setattr(settings, "creao_api_key", "")
     monkeypatch.setattr(settings, "mock_agent_seconds", 0)
     monkeypatch.setattr(settings, "live_simulation_enabled", False)
     monkeypatch.setattr(settings, "transcription_mode", "mock")
@@ -36,7 +39,7 @@ def system(monkeypatch, tmp_path):
                 User(name="Other resident", role="resident", token_hash=token_hash("other-resident")),
             ]
         )
-        from app.response_seed import seed_network
+        from legacy_network import seed_network
 
         seed_network(db)
         db.commit()
@@ -55,9 +58,28 @@ def system(monkeypatch, tmp_path):
 
 
 @pytest.fixture()
+def live_system(system, monkeypatch):
+    """Configure signed provider boundaries without making real phone or transcription calls."""
+    from app import live_media, live_worker
+
+    client, factory = system
+    monkeypatch.setattr(settings, "telephony_enabled", True)
+    monkeypatch.setattr(settings, "telephony_public_url", "https://kontrol.example")
+    monkeypatch.setattr(settings, "twilio_account_sid", "AC" + "a" * 32)
+    monkeypatch.setattr(settings, "twilio_phone_number", "+14155550101")
+    monkeypatch.setattr(settings, "twilio_record_calls", False)
+    monkeypatch.setattr(settings, "twilio_auth_token", "test-provider-secret")
+    monkeypatch.setattr(settings, "twilio_api_key_sid", "SK" + "a" * 32)
+    monkeypatch.setattr(settings, "twilio_api_key_secret", "test-api-key-secret" * 2)
+    monkeypatch.setattr(live_worker, "SessionLocal", factory)
+    monkeypatch.setattr(live_media, "SessionLocal", factory)
+    return client, factory
+
+
+@pytest.fixture()
 def postgres_system(monkeypatch):
     """Allow real row locks only against the named throwaway database, never the demo database."""
-    from app.response_seed import seed_network
+    from legacy_network import seed_network
 
     url = os.environ.get("TEST_DATABASE_URL")
     if not url:
@@ -69,6 +91,9 @@ def postgres_system(monkeypatch):
     factory = sessionmaker(engine, expire_on_commit=False)
     monkeypatch.setattr(worker, "SessionLocal", factory)
     monkeypatch.setattr(call_worker, "SessionLocal", factory)
+    # Tests must stay offline even when settings were imported before pytest collection.
+    monkeypatch.setattr(settings, "creao_mode", "mock")
+    monkeypatch.setattr(settings, "creao_api_key", "")
     monkeypatch.setattr(settings, "mock_agent_seconds", 0)
     with factory() as db:
         db.add_all(

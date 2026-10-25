@@ -19,7 +19,7 @@ test("back to call type preserves recording and starts a fresh workflow", async 
   const first: RecordedCall = await (await started).json();
   const originalAudio = await (await request.get(`/api/calls/${original.id}/audio`, { headers })).body();
   await expect.poll(async () => (await (await request.get(`/api/response-plans/${first.plan_id}`, { headers })).json()).status,
-    { timeout: 45000 }).toBe("awaiting_approval");
+    { timeout: 45000 }).toBe("needs_information");
   const oldPlan: ResponsePlan = await (await request.get(`/api/response-plans/${first.plan_id}`, { headers })).json();
 
   // Exercise navigation from the separate plan page, not just closing the call's drawer.
@@ -51,7 +51,7 @@ test("back to call type preserves recording and starts a fresh workflow", async 
   expect(fresh.id).toBe(first.id);
   expect(fresh.plan_id).not.toBe(first.plan_id);
   await expect.poll(async () => (await (await request.get(`/api/response-plans/${fresh.plan_id}`, { headers })).json()).status,
-    { timeout: 45000 }).toBe("awaiting_approval");
+    { timeout: 45000 }).toBe("needs_information");
   const freshPlan: ResponsePlan = await (await request.get(`/api/response-plans/${fresh.plan_id}`, { headers })).json();
   expect(freshPlan.runs).toHaveLength(4);
   expect(freshPlan.runs.every((r) => oldPlan.runs.every((old) => old.id !== r.id))).toBe(true);

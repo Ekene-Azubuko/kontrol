@@ -5,16 +5,16 @@ from .config import settings
 from .demo_fleet import seed_demo_fleet
 from .db import SessionLocal, now, timestamp
 from .models import Simulation, User
-from .response_seed import seed_network
 from .services import token_hash
 
 
 def seed(db) -> None:
-    """Seed one earthquake exercise; existing reports, users and public records are preserved."""
+    """Initialize the dispatcher, queue lock and optional fleet without creating incidents or hospitals."""
     if not db.scalar(select(User).where(User.role == "coordinator")):
         db.add(User(name="Jordan Lee · Demo dispatcher", role="coordinator", token_hash=token_hash("demo-coordinator")))
         db.flush()
-    seed_network(db)
+    if not db.scalar(select(Simulation)):
+        db.add(Simulation())
     seed_demo_fleet(db)
     db.commit()
 

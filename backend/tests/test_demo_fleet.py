@@ -92,6 +92,8 @@ def test_fleet_only_reaches_dispatch_http_request(system, monkeypatch, stage):
             context = json.loads(json.loads(request.content)["inputs"][settings.creao_input_field])
             sent.append(context)
             assert set(context) == keys[stage]
+            if stage == "hospital":
+                assert context["hospital_statuses"] == []
             if stage == "dispatch":
                 assert {v["vehicle_id"] for v in context["available_vehicles"]} == set(FLEET_IDS.values())
             else:

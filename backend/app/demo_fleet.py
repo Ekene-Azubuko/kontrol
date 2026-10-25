@@ -21,7 +21,6 @@ def vehicle_enabled(vehicle_id: str, simulation: bool) -> bool:
     """Allow only this explicitly opted-in demo fleet alongside real vehicles in live mode."""
     return (
         settings.creao_mode == "mock"
-        or settings.live_simulation_enabled
         or not simulation
         or (settings.demo_fleet_enabled and vehicle_id in FLEET_IDS.values())
     )
@@ -29,7 +28,7 @@ def vehicle_enabled(vehicle_id: str, simulation: bool) -> bool:
 
 def seed_demo_fleet(db: Session) -> None:
     """Insert missing demo units without resetting assigned units or their current positions."""
-    if not settings.demo_fleet_enabled:
+    if not settings.demo_fleet_enabled and settings.creao_mode != "mock":
         return
     for name, kind, latitude, longitude, location, capabilities, capacity in FLEET:
         if db.get(EmergencyVehicle, FLEET_IDS[name]):

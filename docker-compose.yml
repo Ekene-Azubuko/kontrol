@@ -44,9 +44,20 @@ services:
       CALL_MAX_DURATION_SECONDS: ${CALL_MAX_DURATION_SECONDS:-300}
       CALL_GEOCODING_URL: ${CALL_GEOCODING_URL-https://photon.komoot.io/api/}
       CALL_INTERSECTIONS_URL: ${CALL_INTERSECTIONS_URL-https://data.sf.gov/resource/gmfx-8h6i.json}
+      TELEPHONY_ENABLED: ${TELEPHONY_ENABLED:-false}
+      TELEPHONY_PUBLIC_URL: ${TELEPHONY_PUBLIC_URL:-}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_API_KEY_SID: ${TWILIO_API_KEY_SID:-}
+      TWILIO_API_KEY_SECRET: ${TWILIO_API_KEY_SECRET:-}
+      TWILIO_PHONE_NUMBER: ${TWILIO_PHONE_NUMBER:-}
+      TWILIO_RECORD_CALLS: ${TWILIO_RECORD_CALLS:-false}
+      LIVE_TRANSCRIPTION_API_KEY: ${LIVE_TRANSCRIPTION_API_KEY:-}
+      LIVE_TRANSCRIPTION_MODEL: ${LIVE_TRANSCRIPTION_MODEL:-gpt-live-transcribe}
+      LIVE_TRANSCRIPTION_URL: ${LIVE_TRANSCRIPTION_URL:-wss://api.openai.com/v1/realtime?intent=transcription}
+      LIVE_FINALIZATION_TIMEOUT: ${LIVE_FINALIZATION_TIMEOUT:-30}
       DEMO_FLEET_ENABLED: ${DEMO_FLEET_ENABLED:-false}
       MOCK_AGENT_SECONDS: ${MOCK_AGENT_SECONDS:-3}
-      DISPATCH_STAGE_SECONDS: ${DISPATCH_STAGE_SECONDS:-12}
       WORKER_INTERVAL: ${WORKER_INTERVAL:-1}
     volumes:
       - call_audio:/app/call_audio
@@ -91,6 +102,22 @@ services:
       interval: 15s
       timeout: 5s
       retries: 10
+    restart: unless-stopped
+  phone-ingress:
+    profiles: [phone]
+    build: ./backend
+    environment: *backend-env
+    command: ["uvicorn", "app.telephony_ingress:app", "--host", "0.0.0.0", "--port", "8001", "--ws-max-size", "65536"]
+    ports:
+      - "127.0.0.1:${TELEPHONY_INGRESS_PORT:-8001}:8001"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    depends_on:
+      backend:
+        condition: service_healthy
     restart: unless-stopped
 volumes:
   call_audio:

@@ -70,9 +70,10 @@ class Call(Base):
 
     __tablename__ = "calls"
     status: Mapped[str] = mapped_column(default="queued", index=True)
+    source: Mapped[str] = mapped_column(default="recording", server_default="recording")
     received_at: Mapped[datetime] = mapped_column(default=now)
     sample_key: Mapped[str | None]
-    audio_key: Mapped[str]
+    audio_key: Mapped[str | None]
     audio_content_type: Mapped[str]
     duration_seconds: Mapped[float]
     caller_latitude: Mapped[float | None]
@@ -94,6 +95,45 @@ class Call(Base):
     transcription_error: Mapped[str | None]
     version: Mapped[int] = mapped_column(default=1)
     __mapper_args__ = {"version_id_col": version}
+
+
+class LiveCallSession(Base):
+    """Provider state and transcription completion, separate from the shared downstream call record."""
+
+    __tablename__ = "live_call_sessions"
+    call_id: Mapped[str | None] = mapped_column(ForeignKey("calls.id", ondelete="SET NULL"), unique=True)
+    provider_sid: Mapped[str] = mapped_column(unique=True)
+    browser_sid: Mapped[str | None]
+    caller: Mapped[str]
+    called: Mapped[str]
+    state: Mapped[str] = mapped_column(default="ringing")
+    answered_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
+    answered_at: Mapped[datetime | None]
+    ended_at: Mapped[datetime | None]
+    stream_sid: Mapped[str | None]
+    stream_closed_at: Mapped[datetime | None]
+    stream_heartbeat: Mapped[datetime | None]
+    transcription_error: Mapped[str | None]
+    finalized_at: Mapped[datetime | None]
+    resolution_text: Mapped[str | None]
+    recording_sid: Mapped[str | None]
+    recording_state: Mapped[str] = mapped_column(default="off")
+    recording_attempts: Mapped[int] = mapped_column(default=0)
+    recording_claimed_at: Mapped[datetime | None]
+
+
+class LiveTranscriptSegment(Base):
+    """Deduplicated timestamped channel transcript; partial text never counts as finalized speech."""
+
+    __tablename__ = "live_transcript_segments"
+    __table_args__ = (UniqueConstraint("call_id", "track", "item_id"),)
+    call_id: Mapped[str] = mapped_column(ForeignKey("calls.id", ondelete="CASCADE"), index=True)
+    track: Mapped[str]
+    item_id: Mapped[str]
+    start_ms: Mapped[int]
+    end_ms: Mapped[int]
+    text: Mapped[str] = mapped_column(default="")
+    finalized: Mapped[bool] = mapped_column(default=False)
 
 
 class Evidence(Base):
@@ -230,7 +270,7 @@ class Hospital(Base):
     occupied_beds: Mapped[int | None]
     reserved_beds: Mapped[int] = mapped_column(default=0)
     baseline_occupied: Mapped[int | None]
-    diversion: Mapped[bool] = mapped_column(default=False)
+    diversion: Mapped[bool | None]
     simulation: Mapped[bool] = mapped_column(default=True)
     source_urls: Mapped[list[str]] = mapped_column(JSON, default=list)
     discovered_by_agent: Mapped[bool] = mapped_column(default=False)
@@ -310,7 +350,7 @@ class ProposedAssignment(Base):
 
 
 class DispatchAssignment(Base):
-    """Approved simulated movement with explicit lifecycle and arrival bookkeeping."""
+    """Approved static map assignment; historical lifecycle columns are retained for compatibility."""
 
     __tablename__ = "dispatch_assignments"
     __table_args__ = (UniqueConstraint("plan_id", "vehicle_id"),)

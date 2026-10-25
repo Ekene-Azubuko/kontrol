@@ -8,7 +8,7 @@ export default async function Page({
 }) {
   const { role, page } = await params;
   if (role !== "coordinator") notFound();
-  const pages = ["overview", "calls", "incidents", "resources", "response-plans", "dispatch", "hospitals", "communications", "agents"];
+  const pages = ["overview", "calls", "incidents", "response-plans", "dispatch", "agents"];
   if (!pages.includes(page)) notFound();
   return <Workspace role={role} page={page} />;
 }

@@ -3643,3 +3643,30 @@ progress::-webkit-progress-value {
   .startup-scene { height: 25px; }
   .startup-screen, .startup-screen * { animation: none !important; transition: none !important; }
 }
+/* Live voice controls share the existing panels and persist across workspace navigation. */
+.phone-connection, .live-call-heading { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; justify-content: space-between; }
+.phone-connection { padding: 1rem 1.25rem; margin-bottom: 1rem; border: 1px solid var(--border, #dfe4eb); border-radius: 12px; background: white; flex-wrap: wrap; }
+.phone-connection strong { display: flex; align-items: center; gap: .5rem; }
+.phone-connection p { margin: .3rem 0 0; color: #64748b; }
+.live-call { display: grid; gap: 1rem; margin-bottom: 1rem; }
+.live-transcript { max-height: 340px; overflow-y: auto; border-left: 3px solid var(--primary); padding-left: 1rem; }
+.live-transcript p { display: grid; gap: .3rem; line-height: 1.6; }
+.live-transcript small { color: #64748b; }
+.transcript-partial { opacity: .65; }
+.live-phone-notice { position: fixed; bottom: 1.5rem; right: 1.5rem; z-index: 80; display: flex; flex-wrap: wrap; max-width: calc(100vw - 3rem); align-items: center; gap: .75rem; padding: 1rem 1.25rem; border-radius: 12px; background: var(--sidebar); color: white; box-shadow: 0 8px 30px #0003; }
+.live-phone-notice a { color: white; text-decoration: underline; }
+
+/* Vehicle shapes and colors identify each response role on maps and fleet cards. */
+.map-marker.vehicle { width: 34px; height: 34px; }
+.map-marker img { width: 24px; height: 24px; pointer-events: none; }
+.vehicle-ambulance { background: #287557; border-color: #a1e3c2; }
+.vehicle-police { background: #295d9d; border-color: #a9cfff; }
+.vehicle-fire { background: #ad3e35; border-color: #ffc0ac; }
+.vehicle-rescue { background: #80572c; border-color: #f1d09a; }
+.map-marker.vehicle-ambulance { background: #287557; border-color: #a1e3c2; }
+.map-marker.vehicle-police { background: #295d9d; border-color: #a9cfff; }
+.map-marker.vehicle-fire { background: #ad3e35; border-color: #ffc0ac; }
+.map-marker.vehicle-rescue { background: #80572c; border-color: #f1d09a; }
+.legend-vehicle, .fleet-vehicle-icon { border-radius: 5px; padding: 3px; flex-shrink: 0; }
+
+.map-legend { z-index: 4; }

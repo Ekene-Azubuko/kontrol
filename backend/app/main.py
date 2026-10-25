@@ -10,10 +10,12 @@ from sqlalchemy.orm.exc import StaleDataError
 
 from .config import settings
 from .call_api import router as call_router
+from .telephony_api import router as telephony_router, provider_router as telephony_callbacks
+from .live_media import router as live_media_router
 from .response_api import router as response_router
 from .dependencies import DB, Principal, Coordinator, current_user
 from .network import operation_lock, record
-from .db import SessionLocal, now
+from .db import SessionLocal
 from .models import (
     AgentFinding,
     AgentRun,
@@ -22,20 +24,15 @@ from .models import (
     Incident,
     IncidentReport,
     Report,
-    Resource,
-    ResourceRequest,
     ResponsePlan,
     Simulation,
 )
 from .schemas import (
     IncidentAction,
-    RequestInput,
-    ResourceInput,
     SimulationInput,
 )
 from .services import (
     apply_incident_action,
-    approve_resource,
     require_record,
 )
 
@@ -136,65 +133,6 @@ def incident_action(incident_id: str, data: IncidentAction, db: DB, user: Coordi
     apply_incident_action(db, incident, user, data)
     db.commit()
     return record(incident)
-
-
-@app.get("/resources")
-def resources(db: DB, user: Coordinator):
-    """Keep the legacy seeded resource directory out of live product surfaces."""
-    if settings.creao_mode == "live" and not settings.live_simulation_enabled:
-        return []
-    query = select(Resource).order_by(Resource.name)
-    if user.role != "coordinator":
-        query = query.where(Resource.published.is_(True))
-    return [record(row) for row in db.scalars(query)]
-
-
-@app.patch("/resources/{resource_id}")
-def edit_resource(resource_id: str, data: ResourceInput, db: DB, user: Coordinator):
-    """Update confirmed capacity with optimistic concurrency protection."""
-    resource = require_record(db, Resource, resource_id)
-    if data.occupancy > data.capacity:
-        raise HTTPException(422, "Occupancy cannot exceed capacity")
-    if data.version != resource.version:
-        raise HTTPException(409, "Resource changed; refresh before editing")
-    resource.capacity, resource.occupancy, resource.published = data.capacity, data.occupancy, data.published
-    resource.confirmed_at = now()
-    db.add(CoordinatorAction(user_id=user.id, action="resource_edit", details=f"Confirmed {resource.name}"))
-    db.commit()
-    return record(resource)
-
-
-@app.get("/resource-requests")
-def resource_requests(db: DB, user: Coordinator):
-    """Keep proposals against legacy seeded resources out of live product surfaces."""
-    if settings.creao_mode == "live" and not settings.live_simulation_enabled:
-        return []
-    return [
-        record(row)
-        for row in db.scalars(select(ResourceRequest).order_by(ResourceRequest.created_at.desc()))
-    ]
-
-
-@app.post("/resource-requests")
-def request_resource(data: RequestInput, db: DB, user: Coordinator):
-    """Create a pending proposal without changing resource occupancy."""
-    require_record(db, Incident, data.incident_id)
-    require_record(db, Resource, data.resource_id)
-    proposal = ResourceRequest(**data.model_dump())
-    db.add(proposal)
-    db.commit()
-    return record(proposal)
-
-
-@app.post("/resource-requests/{request_id}/approve")
-def approve_request(request_id: str, db: DB, user: Coordinator):
-    """Approve simulated allocation once, within the resource capacity transaction."""
-    proposal = db.scalar(select(ResourceRequest).where(ResourceRequest.id == request_id).with_for_update())
-    if not proposal:
-        raise HTTPException(404, "Request not found")
-    approve_resource(db, proposal, user)
-    db.commit()
-    return record(proposal)
 
 
 @app.get("/agents")
@@ -306,3 +244,6 @@ app.include_router(response_router)
 
 
 app.include_router(call_router)
+app.include_router(telephony_router)
+app.include_router(telephony_callbacks)
+app.include_router(live_media_router)

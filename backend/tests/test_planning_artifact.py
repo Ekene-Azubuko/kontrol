@@ -1,7 +1,6 @@
 """Exercise the observed rich Planning artifact through validation, storage and coordinator review."""
 
 import json
-from datetime import timedelta
 from pathlib import Path
 
 import pytest
@@ -11,8 +10,6 @@ from app import worker
 from call_helpers import submit_call
 from app.config import settings
 from app.demo_fleet import seed_demo_fleet
-from app.db import now
-from app.dispatch_simulation import dispatch_tick
 from app.models import AgentRun, Hospital
 from app.response_schemas import DispatchResult, HospitalResult, IntakeResult, PlanningResult
 from test_creao_artifacts import download_result
@@ -131,11 +128,7 @@ def test_planning_artifact_supports_coordinator_approval_with_unknown_capacity(
     assert all(d["reserved_beds"] == 0 for d in approved["dispatches"])
     assert set(artifact["limitations"]).issubset(approved["constraints"])
     assert client.post(f"/response-plans/{plan['id']}/decision", headers=COORDINATOR, json=decision).status_code == 409
-    current = now()
     with factory() as db:
-        for step in range(1, 6):
-            dispatch_tick(db, current + timedelta(seconds=step * settings.dispatch_stage_seconds + 0.1))
-            db.commit()
         hospital = db.scalar(select(Hospital).where(Hospital.name == hospital_name))
         assert hospital.total_beds == existing_capacity
         assert hospital.occupied_beds == (3 if existing_capacity is not None else None)
@@ -144,8 +137,8 @@ def test_planning_artifact_supports_coordinator_approval_with_unknown_capacity(
         assert run.status == "completed" and run.error is None
         assert run.output["planned_patient_count"] is None
         assert run.output["limitations"] == artifact["limitations"]
-    completed = client.get(f"/response-plans/{plan['id']}", headers=COORDINATOR).json()
-    assert completed["status"] == "completed"
+    persisted = client.get(f"/response-plans/{plan['id']}", headers=COORDINATOR).json()
+    assert persisted["status"] == "approved"
 
 
 @pytest.mark.parametrize("bad_value", [-1, 1441])

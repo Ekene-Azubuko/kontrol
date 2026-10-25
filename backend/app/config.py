@@ -26,7 +26,6 @@ class Settings(BaseSettings):
     creao_poll_seconds: float = Field(default=2, ge=1, allow_inf_nan=False)
     worker_interval: float = 1
     mock_agent_seconds: float = 3
-    dispatch_stage_seconds: float = 12
     live_simulation_enabled: bool = False
     demo_fleet_enabled: bool = False
     transcription_mode: str = "mock"
@@ -39,6 +38,18 @@ class Settings(BaseSettings):
     call_max_duration_seconds: float = 300
     call_geocoding_url: str = "https://photon.komoot.io/api/"
     call_intersections_url: str = "https://data.sf.gov/resource/gmfx-8h6i.json"
+    telephony_enabled: bool = False
+    telephony_public_url: str = ""
+    twilio_account_sid: str = ""
+    twilio_auth_token: str = ""
+    twilio_api_key_sid: str = ""
+    twilio_api_key_secret: str = ""
+    twilio_phone_number: str = ""
+    twilio_record_calls: bool = False
+    live_transcription_api_key: str = ""
+    live_transcription_model: str = "gpt-live-transcribe"
+    live_transcription_url: str = "wss://api.openai.com/v1/realtime?intent=transcription"
+    live_finalization_timeout: int = 30
 
 
 settings = Settings()

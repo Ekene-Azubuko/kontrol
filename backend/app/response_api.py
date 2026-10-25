@@ -4,12 +4,10 @@ from fastapi import APIRouter, HTTPException
 from sqlalchemy import select
 from .config import settings
 from .demo_fleet import vehicle_enabled
-from .db import now
 from .dependencies import DB, Coordinator
 from .models import (
     AgentRun,
     Call,
-    CommunicationLog,
     CoordinatorAction,
     DispatchAssignment,
     EmergencyVehicle,
@@ -85,7 +83,7 @@ def response_plan(plan_id: str, db: DB, user: Coordinator):
 
 @router.post("/response-plans/{plan_id}/decision")
 def decision(plan_id: str, data: PlanDecision, db: DB, user: Coordinator):
-    """Make reservations and simulated messages part of the same human-decision transaction."""
+    """Record the human decision and approved map assignments in one transaction."""
     require_record(db, ResponsePlan, plan_id)
     result = decide_plan(db, plan_id, user, data)
     db.commit()
@@ -118,7 +116,7 @@ def generate_plan(incident_id: str, data: GeneratePlan, db: DB, user: Coordinato
 def hospital_network(db: DB, user: Coordinator, incident_id: str | None = None):
     """Expose only live hospital records to frontend clients."""
     rows = hospitals(db, require_record(db, Incident, incident_id) if incident_id else None)
-    return [row for row in rows if not row["simulation"]] if settings.creao_mode == "live" and not settings.live_simulation_enabled else rows
+    return [row for row in rows if settings.creao_mode == "mock" or not row["simulation"]]
 
 
 @router.get("/vehicles")
@@ -150,34 +148,6 @@ def dispatches(db: DB, user: Coordinator):
             }
         )
     return result
-
-
-@router.get("/communications")
-def communications(db: DB, user: Coordinator):
-    """Read internal messages associated with live responses."""
-    query = select(CommunicationLog).order_by(CommunicationLog.created_at.desc()).limit(200)
-    return [
-        {**record(row), "incident_title": db.get(Incident, row.incident_id).title}
-        for row in db.scalars(query)
-    ]
-
-
-@router.post("/communications/{message_id}/acknowledge")
-def acknowledge(message_id: str, db: DB, user: Coordinator):
-    """Record an explicit simulated acknowledgement without sending a real message."""
-    row = require_record(db, CommunicationLog, message_id)
-    if row.status != "acknowledged":
-        row.status, row.acknowledged_at = "acknowledged", now()
-        db.add(
-            CoordinatorAction(
-                user_id=user.id,
-                incident_id=row.incident_id,
-                action="message_acknowledged",
-                details=f"SIMULATION: Acknowledged message {row.id}",
-            )
-        )
-        db.commit()
-    return record(row)
 
 
 @router.post("/response-demo")

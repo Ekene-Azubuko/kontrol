@@ -27,6 +27,12 @@ def mark_call_deleted(db: Session, call_id: str, user: User, data: DeleteCall) -
                      .execution_options(populate_existing=True))
     if call is None or call.status == "deleted":
         raise HTTPException(404, "Recording not found")
+    if call.source == "live":
+        from .live_calls import live_session
+
+        session = live_session(db, call.id)
+        if session and (not session.ended_at or not session.stream_closed_at):
+            raise HTTPException(409, "End the live call and wait for audio draining before deleting it.")
     if call.version != data.version:
         raise HTTPException(409, "Recording changed. Refresh and confirm deletion again.")
     call.status, call.claim_token, call.lease_expires_at = "deleted", None, None
@@ -48,12 +54,20 @@ def cleanup_deleted_calls(db: Session, call_id: str | None = None) -> bool:
     pending = False
     for call in db.scalars(query.limit(20).with_for_update()):
         try:
-            audio_path(call.audio_key).unlink(missing_ok=True)
+            if call.audio_key:
+                audio_path(call.audio_key).unlink(missing_ok=True)
         except OSError:
             # Leave a hidden tombstone so a worker can retry after a storage failure or restart.
             logging.warning("Recording cleanup pending for call %s", call.id)
             pending = True
             continue
+        # Explicit deletion keeps SQLite tests and PostgreSQL cascades consistent.
+        from sqlalchemy import delete, update
+        from .models import LiveCallSession, LiveTranscriptSegment
+
+        db.execute(delete(LiveTranscriptSegment).where(LiveTranscriptSegment.call_id == call.id))
+        # Retain the terminal provider SID as a webhook tombstone so retries cannot recreate a deleted call.
+        db.execute(update(LiveCallSession).where(LiveCallSession.call_id == call.id).values(call_id=None))
         db.delete(call)
     db.flush()
     return pending

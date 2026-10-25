@@ -17,7 +17,8 @@ from app.models import (
     User,
 )
 from app.response_schemas import PlanDecision
-from app.response_seed import reset_response_demo, response_report
+from app.response_seed import reset_response_demo
+from legacy_network import response_report
 from app.response_services import decide_plan
 from app.services import ingest_report
 
@@ -91,7 +92,7 @@ def test_simultaneous_approvals_cannot_double_book(postgres_system):
     with factory() as db:
         assignments = list(db.scalars(select(DispatchAssignment)))
         assert len(assignments) == 2 and len({a.vehicle_id for a in assignments}) == 2
-        assert sum(h.reserved_beds for h in db.scalars(select(Hospital))) == 2
+        assert sum(h.reserved_beds for h in db.scalars(select(Hospital))) == 0
 
 
 def test_reset_discards_in_flight_agent_output(postgres_system, monkeypatch):

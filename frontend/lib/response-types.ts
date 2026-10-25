@@ -21,7 +21,7 @@ export type Hospital = {
   occupied_beds: number | null;
   reserved_beds: number;
   available_beds: number | null;
-  diversion: boolean;
+  diversion: boolean | null;
   travel_minutes: number | null;
   inventory: InventoryItem[];
   source_urls: string[];
@@ -174,7 +174,18 @@ export type Communication = {
   acknowledged_at: string | null;
 };
 
-export type CallStatus = "queued" | "transcribing" | "awaiting_review" | "confirmed" | "failed";
+export type CallStatus = "queued" | "transcribing" | "awaiting_review" | "confirmed" | "failed"
+  | "live_ringing" | "live_answering" | "live_active" | "live_finalizing" | "live_incomplete";
+export type LiveTranscriptSegment = {
+  id: string; track: "inbound" | "outbound"; item_id: string;
+  start_ms: number; end_ms: number; text: string; finalized: boolean;
+};
+export type LiveCallSession = {
+  state: string; caller: string; called: string; answered_at: string | null;
+  ended_at: string | null; finalized_at: string | null; recording_state: string;
+  transcription_error: string | null; resolution_text: string | null;
+  segments: LiveTranscriptSegment[];
+};
 export type DetectedCallLocation = {
   status: "resolved" | "unavailable";
   address: string | null;
@@ -191,6 +202,9 @@ export type RecordedCall = {
   id: string;
   can_reopen: boolean;
   status: CallStatus;
+  source?: "recording" | "live";
+  has_audio?: boolean;
+  live?: LiveCallSession | null;
   received_at: string;
   sample_key: string | null;
   audio_content_type: string;

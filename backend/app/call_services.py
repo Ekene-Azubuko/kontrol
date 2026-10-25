@@ -19,6 +19,7 @@ from .call_location import (
 from .db import now
 from .models import Call, CoordinatorAction, IncidentReport, ResponsePlan, User
 from .network import operation_lock, record
+from .live_calls import live_record, require_live_ready, review_transcript
 from .schemas import Category, ReportInput, StrictModel
 from .services import ingest_report
 
@@ -79,6 +80,7 @@ def editable_call(db: Session, call_id: str, version: int) -> Call:
     )
     if not call:
         raise HTTPException(404, "Call not found")
+    require_live_ready(db, call)
     if call.status != "awaiting_review" or call.version != version or call.report_id:
         raise HTTPException(409, "Call changed or was already started. Refresh before editing its location.")
     return call
@@ -87,11 +89,11 @@ def editable_call(db: Session, call_id: str, version: int) -> Call:
 def locate_call(db: Session, call_id: str, user: User, data: LocateCall) -> Call:
     """Resolve location outside database locks, then save only if the observed call version still matches."""
     call = editable_call(db, call_id, data.version)
-    if not call.original_transcript:
+    if not review_transcript(db, call):
         raise HTTPException(409, "Wait for transcription before finding the location.")
     previous = call.detected_location
     address = data.address if data.address is not None else (previous or {}).get("input_address")
-    transcript = call.original_transcript
+    transcript = review_transcript(db, call)
     db.commit()  # No database transaction or reset lock may span an external geocoding request.
     location = detect_location(f"At {address}" if address else transcript)
     location.input_source = "dispatcher_address" if address else "transcript"
@@ -126,8 +128,9 @@ def locate_call(db: Session, call_id: str, user: User, data: LocateCall) -> Call
 def start_call(db: Session, call_id: str, user: User, data: StartCall) -> Call:
     """Start from server-owned transcript inference without treating it as human location verification."""
     call = editable_call(db, call_id, data.version)
+    transcript = review_transcript(db, call)
     location = DetectedLocation.model_validate(call.detected_location) if call.detected_location else None
-    if not location or location.status != "resolved" or not call.original_transcript:
+    if not location or location.status != "resolved" or not transcript:
         raise HTTPException(
             409,
             "No incident location is available. Edit the address or find the location again before starting agents.",
@@ -140,7 +143,7 @@ def start_call(db: Session, call_id: str, user: User, data: StartCall) -> Call:
             latitude=location.latitude,
             longitude=location.longitude,
             address=location.address,
-            transcript=call.original_transcript,
+            transcript=transcript,
             category=data.category,
             version=data.version,
         ),
@@ -170,11 +173,13 @@ def require_exercise_execution() -> None:
         raise HTTPException(403, "Recorded-call exercises require trusted local demo mode.")
 
 
-def call_record(db: Session, call: Call) -> dict:
+def call_record(db: Session, call: Call, *, include_segments: bool = False) -> dict:
     """Serialize review state without disclosing paths or worker claim credentials."""
     from .call_reopen import REOPENABLE_PLAN_STATUSES
 
     result = record(call, {"audio_key", "claim_token", "lease_expires_at"})
+    result["has_audio"] = bool(call.audio_key)
+    result["live"] = live_record(db, call, include_segments=include_segments) if call.source == "live" else None
     result["incident_id"] = None
     result["plan_id"] = None
     result["can_reopen"] = False
@@ -199,11 +204,14 @@ def confirm_review(
     db: Session, call_id: str, user: User, data: ConfirmReview, *, automatic_location: bool = False
 ) -> Call:
     """Link a single call to a report and plan under the same reset and row locks."""
-    require_exercise_execution()
     operation_lock(db)
     call = db.scalar(select(Call).where(Call.id == call_id).with_for_update())
     if not call:
         raise HTTPException(404, "Call not found")
+    if call.source == "live":
+        require_live_ready(db, call)
+    else:
+        require_exercise_execution()
     if call.status != "awaiting_review" or call.version != data.version:
         raise HTTPException(409, "Call changed or was already confirmed. Refresh before reviewing.")
     report = ingest_report(

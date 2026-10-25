@@ -167,7 +167,7 @@ export function ResponsePlans() {
         <div>
           <strong>Your decision starts the response.</strong>
           <p>
-            Proposals do not reserve vehicles or beds. Approval checks current
+            Proposals do not assign vehicles. Approval checks current
             availability, creates assignments and updates the live map.
           </p>
         </div>
@@ -311,7 +311,7 @@ export function PlanDetail({
       },
       "POST",
       kind === "approve"
-        ? "Plan approved. Dispatch has started."
+        ? "Plan approved. Response markers are on the map."
         : kind === "revise"
           ? "Revision requested. A new plan is generating."
           : "Plan rejected. No resources assigned.",
@@ -389,7 +389,7 @@ export function PlanDetail({
                       <small>
                         {assignment.patients
                           ? `${assignment.patients} patient(s) · ${assignment.hospital_eta_minutes} min scene → hospital`
-                          : "No hospital beds reserved"}
+                          : "Patient allocation unconfirmed"}
                       </small>
                     </span>
                   </div>
@@ -480,7 +480,7 @@ export function PlanDetail({
                 </Link>
               )}
               {plan.dispatches.length > 0 && (
-                <Panel title="Response progress">
+                <Panel title="Approved assignments">
                   {plan.dispatches.map((dispatch) => (
                     <div className="dispatch-mini" key={dispatch.id}>
                       <span>
@@ -498,11 +498,10 @@ export function PlanDetail({
                             : dispatch.status
                         }
                       />
-                      <progress max={1} value={dispatch.progress} />
                     </div>
                   ))}
                   <Link className="text-link" href="/coordinator/dispatch">
-                    Watch fleet movement <ArrowRight size={14} />
+                    View assigned resources <ArrowRight size={14} />
                   </Link>
                 </Panel>
               )}
@@ -524,7 +523,7 @@ export function PlanDetail({
                   </h3>
                   <p>
                     {plan.feasible
-                      ? "Approval reserves the proposed vehicles and hospital beds and adds the response to the live map."
+                      ? "Approval assigns the proposed vehicles and adds the response markers to the map."
                       : "You can approve the proposed response with its recorded constraints. Unconfirmed patient counts and bed availability remain pending."}
                   </p>
                   <label>

@@ -24,7 +24,7 @@ def store_discovered_hospitals(db: Session, hospitals: list[dict], *, refresh_ex
             latitude=hospital["latitude"], longitude=hospital["longitude"],
             capabilities=hospital["documented_capabilities"],
             total_beds=None, occupied_beds=None, baseline_occupied=None,
-            diversion=False, simulation=False, source_urls=hospital["source_urls"],
+            diversion=None, simulation=False, source_urls=hospital["source_urls"],
             discovered_by_agent=True,
         ))
     # The planner immediately resolves destination IDs in this same transaction.
