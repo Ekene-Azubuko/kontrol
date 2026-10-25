@@ -36,6 +36,7 @@ def process_one_call() -> bool:
         call = db.scalar(
             select(Call)
             .where(
+                Call.source == "recording",
                 or_(
                     Call.status == "queued",
                     and_(Call.status == "awaiting_review", Call.detected_location.is_(None)),

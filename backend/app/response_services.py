@@ -8,7 +8,6 @@ from .db import now
 from .demo_fleet import vehicle_enabled
 from .models import (
     AgentRun,
-    CommunicationLog,
     CoordinatorAction,
     DispatchAssignment,
     EmergencyVehicle,
@@ -159,7 +158,7 @@ def validate_stage(stage: str, output: dict, payload: dict) -> None:
 
 
 def decide_plan(db: Session, plan_id: str, user: User, decision: PlanDecision) -> ResponsePlan:
-    """Apply an explicit human decision and reserve resources atomically only on approval."""
+    """Record approved fleet assignments atomically without simulating messages or hospital reservations."""
     operation_lock(db)
     plan = db.scalar(select(ResponsePlan).where(ResponsePlan.id == plan_id).with_for_update())
     if not plan:
@@ -184,7 +183,7 @@ def decide_plan(db: Session, plan_id: str, user: User, decision: PlanDecision) -
             v.id: v
             for v in db.scalars(select(EmergencyVehicle).order_by(EmergencyVehicle.id).with_for_update())
         }
-        network = {h.id: h for h in db.scalars(select(Hospital).order_by(Hospital.id).with_for_update())}
+        list(db.scalars(select(Hospital).order_by(Hospital.id).with_for_update()))
         try:
             validate_assignments(
                 plan.requirements,
@@ -200,20 +199,9 @@ def decide_plan(db: Session, plan_id: str, user: User, decision: PlanDecision) -
             raise HTTPException(409, f"Resources changed: {exc}. Request a revised plan.") from None
         plan.status, plan.approved_by, plan.approved_at = "approved", user.id, now()
         update_response_status(db, incident, "assigned")
-        receiving = Counter()
         for proposal in proposals:
             vehicle = fleet[proposal.vehicle_id]
             vehicle.status = "assigned"
-            hospital = network.get(proposal.hospital_id)
-            # Approval authorizes response; it does not confirm unknown patients or hospital capacity.
-            reserved_beds = (
-                proposal.patients
-                if hospital
-                and hospital.total_beds is not None
-                and hospital.occupied_beds is not None
-                and proposal.patients is not None
-                else 0
-            )
             db.add(
                 DispatchAssignment(
                     plan_id=plan.id,
@@ -221,48 +209,11 @@ def decide_plan(db: Session, plan_id: str, user: User, decision: PlanDecision) -
                     vehicle_id=vehicle.id,
                     hospital_id=proposal.hospital_id,
                     patients=proposal.patients,
-                    reserved_beds=reserved_beds,
+                    reserved_beds=0,
                     origin_latitude=vehicle.latitude,
                     origin_longitude=vehicle.longitude,
                 )
             )
-            destination = network[proposal.hospital_id].name if proposal.hospital_id else "incident support"
-            db.add(
-                CommunicationLog(
-                    plan_id=plan.id,
-                    incident_id=incident.id,
-                    simulation=plan.simulation,
-                    recipient=vehicle.call_sign,
-                    recipient_type="responder",
-                    message=f"Approved response assignment to {incident.location}; "
-                    f"patients: {proposal.patients if proposal.patients is not None else 'unconfirmed'}; "
-                    f"destination: {destination}.",
-                )
-            )
-            if proposal.hospital_id and reserved_beds:
-                network[proposal.hospital_id].reserved_beds += reserved_beds
-                receiving[proposal.hospital_id] += reserved_beds
-        for hospital_id, patients in receiving.items():
-            db.add(
-                CommunicationLog(
-                    plan_id=plan.id,
-                    incident_id=incident.id,
-                    simulation=plan.simulation,
-                    recipient=network[hospital_id].name,
-                    recipient_type="hospital",
-                    message=f"{patients} patient(s) expected from {incident.location}. Beds reserved for approved plan {plan.id[:8]}.",
-                )
-            )
-        db.add(
-            CommunicationLog(
-                plan_id=plan.id,
-                incident_id=incident.id,
-                simulation=plan.simulation,
-                recipient="Kontrol coordination",
-                recipient_type="coordination",
-                message=f"Dispatcher approved response at {incident.location}. {len(proposals)} unit(s) assigned.",
-            )
-        )
     db.add(
         CoordinatorAction(
             user_id=user.id,

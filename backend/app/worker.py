@@ -40,11 +40,10 @@ def job_payload(db, run: AgentRun) -> dict:
         for row in prior
         if row.status in {"completed", "failed", "cancelled"}
     }
-    include_simulation = settings.creao_mode == "mock" or settings.live_simulation_enabled
     # Intake needs no resources, and Hospital must not depend on fleet reads.
     # Planning's resource snapshots stay local for validation; only agent_input goes to CREAO.
     hospital_rows = (
-        [row for row in hospitals(db, incident) if include_simulation or not row["simulation"]]
+        [row for row in hospitals(db, incident) if settings.creao_mode == "mock" or not row["simulation"]]
         if run.stage in {"hospital", "planning"}
         else []
     )
@@ -77,15 +76,8 @@ def job_payload(db, run: AgentRun) -> dict:
                 ["emergency_department"] if (intake["reported_injuries"] or 0) > 0 else []
             ),
             "search_radius_miles": 15,
-            "hospital_statuses": [
-                {
-                    "hospital_id": row["id"],
-                    "name": row["name"],
-                    "available_beds": row["available_beds"],
-                    "diversion_status": row["diversion"],
-                }
-                for row in hospital_rows
-            ],
+            # No operator capacity feed is configured. Agent findings are not current bed telemetry.
+            "hospital_statuses": [],
         }
     elif run.stage == "dispatch":
         intake = findings["intake"]
@@ -363,17 +355,19 @@ def process_one() -> bool:
 
 
 def main() -> None:
-    """Keep two agent slots available while advancing simulation independently of remote latency."""
-    from .dispatch_simulation import dispatch_tick
+    """Process calls and agent jobs without fabricating response movement or arrival events."""
     from .seed import simulation_tick
 
     logging.basicConfig(level=logging.INFO)
     from .call_worker import process_one_call, recover_expired_calls
+    from .live_worker import live_maintenance
 
     with (ThreadPoolExecutor(max_workers=2, thread_name_prefix="kontrol-agent") as executor,
-          ThreadPoolExecutor(max_workers=1, thread_name_prefix="kontrol-transcription") as transcription):
+          ThreadPoolExecutor(max_workers=1, thread_name_prefix="kontrol-transcription") as transcription,
+          ThreadPoolExecutor(max_workers=1, thread_name_prefix="kontrol-live-finalizer") as live_finalizer):
         pending = []
         call_future = None
+        live_future = None
         while True:
             try:
                 finished = [future for future in pending if future.done()]
@@ -387,7 +381,6 @@ def main() -> None:
                         simulation_tick(db, state)
                     recover_expired(db)
                     recover_expired_calls(db)
-                    dispatch_tick(db)
                     db.commit()
                 if call_future is None or call_future.done():
                     finished_call, call_future = call_future, None
@@ -396,6 +389,11 @@ def main() -> None:
                     if finished_call is not None:
                         finished_call.result()
                     call_future = transcription.submit(process_one_call)
+                if live_future is None or live_future.done():
+                    finished_live, live_future = live_future, None
+                    if finished_live is not None:
+                        finished_live.result()
+                    live_future = live_finalizer.submit(live_maintenance)
                 while len(pending) < 2:
                     pending.append(executor.submit(process_one))
             except Exception:

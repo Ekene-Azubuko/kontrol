@@ -305,7 +305,7 @@ def test_provider_switch_preserves_exercise_history(system, monkeypatch):
         json={"action": "approve", "version": plan["version"], "note": "Reviewed fictional call"},
     )
     assert approved.status_code == 200
-    assert all(message["simulation"] for message in client.get("/communications", headers=COORDINATOR).json())
+    assert client.get("/communications", headers=COORDINATOR).status_code == 404
     monkeypatch.setattr(settings, "creao_mode", "live")
     monkeypatch.setattr(settings, "live_simulation_enabled", False)
     for path in [
@@ -314,7 +314,6 @@ def test_provider_switch_preserves_exercise_history(system, monkeypatch):
         "/incidents",
         "/response-plans",
         "/dispatches",
-        "/communications",
         "/agents",
         "/activity",
     ]:

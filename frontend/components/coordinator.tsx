@@ -34,9 +34,7 @@ import { PageHeading } from "./page-heading";
 import { Button } from "./ui/button";
 import { Drawer } from "./ui/dialog";
 import { IncidentDetail } from "./incident-detail";
-import { ResourceWorkspace } from "./resources";
 import { Calls } from "./calls";
-import { Communications } from "./communications";
 import { AgentWorkspace } from "./agents";
 import {
   PlanCard,
@@ -46,8 +44,6 @@ import {
 } from "./response-plans";
 import {
   FleetWorkspace,
-  HospitalWorkspace,
-  dispatchRoutes,
   networkMarkers,
 } from "./network";
 
@@ -56,9 +52,6 @@ export function CoordinatorView({ page }: { page: string }) {
   if (page === "calls") return <Calls />;
   if (page === "response-plans") return <ResponsePlans />;
   if (page === "dispatch") return <FleetWorkspace />;
-  if (page === "hospitals") return <HospitalWorkspace />;
-  if (page === "resources") return <ResourceWorkspace coordinator />;
-  if (page === "communications") return <Communications />;
   if (page === "agents") return <AgentWorkspace />;
   return <CommandWorkspace register={page === "incidents"} />;
 }
@@ -120,10 +113,6 @@ function CommandWorkspace({ register }: { register: boolean }) {
       `${i.title} ${i.location}`.toLowerCase().includes(search.toLowerCase()) &&
       (filter === "all" || i.response_status === filter),
   );
-  const capacity =
-    hospitals.data
-      ?.filter((h) => !h.diversion)
-      .reduce((sum, h) => sum + (h.available_beds || 0), 0) || 0;
   return (
     <>
       <PageHeading
@@ -184,9 +173,9 @@ function CommandWorkspace({ register }: { register: boolean }) {
               icon={<Ambulance size={18} />}
             />
             <Metric
-              label="Available beds"
-              value={capacity}
-              detail="Excludes reserved and diverted"
+              label="Selected hospitals"
+              value={visibleHospitalIds.size}
+              detail="Destinations in approved plans"
               icon={<Building2 size={18} />}
             />
           </div>
@@ -220,7 +209,7 @@ function CommandWorkspace({ register }: { register: boolean }) {
                     visibleVehicleIds.has(vehicle.id),
                   ),
                 )}
-                routes={dispatchRoutes(visibleDispatches)}
+                fitToItems
                 onSelect={(id) => setSelected(id)}
               />
             </Panel>
@@ -383,7 +372,7 @@ function CommandWorkspace({ register }: { register: boolean }) {
             ))}
             {!activity.data?.length && (
               <Empty>
-                Coordinator decisions and acknowledgements appear here.
+                Coordinator decisions appear here.
               </Empty>
             )}
           </div>
@@ -405,22 +394,12 @@ function CommandWorkspace({ register }: { register: boolean }) {
                 <div className="detail-section" key={h.id}>
                   <h1>{h.name}</h1>
                   <p>{h.location}</p>
-                  <Badge value={h.diversion ? "diversion" : "accepting"} />
-                  <h2>{h.available_beds ?? "Unknown"} available beds</h2>
-                  <p>
-                    {h.occupied_beds} occupied · {h.reserved_beds} reserved
-                  </p>
                   <div className="resource-tags">
                     {h.capabilities.map((c) => (
                       <span key={c}>{c}</span>
                     ))}
                   </div>
-                  <Link
-                    className="button primary"
-                    href="/coordinator/hospitals"
-                  >
-                    Open Hospital Network
-                  </Link>
+                  <p className="muted">Facility details come from the Hospital agent. See the response plan for capacity findings and limitations.</p>
                 </div>
               ))
           : fleet.data

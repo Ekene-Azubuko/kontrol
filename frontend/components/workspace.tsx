@@ -12,7 +12,6 @@ import {
   Menu,
   Radio,
   Ambulance,
-  Hospital,
   ClipboardList,
   X,
 } from "lucide-react";
@@ -26,8 +25,6 @@ const coordinatorLinks = [
   { slug: "incidents", label: "Incidents", icon: Flame },
   { slug: "response-plans", label: "Response Plans", icon: ClipboardList },
   { slug: "dispatch", label: "Fleet & Dispatch", icon: Ambulance },
-  { slug: "hospitals", label: "Hospital Network", icon: Hospital },
-  { slug: "communications", label: "Communications", icon: Radio },
   { slug: "agents", label: "Agent Operations", icon: Bot },
 ];
 /** Render the dispatcher exercise workspace with its built-in local identity. */

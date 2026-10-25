@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { Layers, LocateFixed } from "lucide-react";
+import Image from "next/image";
+import { vehicleSymbol, vehicleSymbolLabels } from "@/lib/vehicle-symbols";
 export type MapItem = {
   id: string;
   latitude: number;
@@ -15,7 +17,6 @@ export type MapItem = {
   markerLabel?: string;
   nearest?: boolean;
 };
-export type MapRoute = { id: string; points: [number, number][] };
 const sanFranciscoBounds: [[number, number], [number, number]] = [
   [-122.525, 37.705],
   [-122.35, 37.825],
@@ -31,7 +32,6 @@ export function IncidentMap({
   callerLocation,
   revealLocation,
   compact = false,
-  routes,
   selectedId,
   fitToItems = false,
   caption = "LIVE RESPONSES",
@@ -48,7 +48,6 @@ export function IncidentMap({
   };
   revealLocation?: { latitude: number; longitude: number };
   compact?: boolean;
-  routes?: MapRoute[];
   selectedId?: string | null;
   fitToItems?: boolean;
   caption?: string;
@@ -57,7 +56,6 @@ export function IncidentMap({
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
   const markers = useRef(new Map<string, maplibregl.Marker>());
-  const animation = useRef<number | null>(null);
   const [error, setError] = useState(false);
   const [ready, setReady] = useState(false);
   const [revealPhase, setRevealPhase] = useState<
@@ -116,12 +114,6 @@ export function IncidentMap({
         markers.current.delete(id);
       }
     }
-    if (animation.current) cancelAnimationFrame(animation.current);
-    const moves: {
-      marker: maplibregl.Marker;
-      from: [number, number];
-      to: [number, number];
-    }[] = [];
     for (const item of items) {
       let marker = markers.current.get(item.id);
       if (!marker) {
@@ -140,7 +132,8 @@ export function IncidentMap({
       const positioningClasses = Array.from(element.classList)
         .filter((name) => name.startsWith("maplibregl-"))
         .join(" ");
-      element.className = `${positioningClasses} map-marker ${item.kind || "incident"} ${item.severity || "resource"} ${item.nearest ? "nearest" : ""} ${item.id === selectedId ? "selected" : ""}`;
+      const symbol = item.kind === "vehicle" ? vehicleSymbol(item.category) : null;
+      element.className = `${positioningClasses} map-marker ${symbol ? `vehicle-${symbol}` : ""} ${item.kind || "incident"} ${item.severity || "resource"} ${item.nearest ? "nearest" : ""} ${item.id === selectedId ? "selected" : ""}`;
       if (selectedId !== undefined)
         element.setAttribute("aria-pressed", String(item.id === selectedId));
       element.style.zIndex =
@@ -148,39 +141,24 @@ export function IncidentMap({
       const label = item.title || item.name || item.category;
       element.setAttribute("aria-label", label);
       element.title = label;
-      element.textContent =
-        item.markerLabel ??
-        (item.kind === "hospital"
-          ? "H"
-          : item.kind === "vehicle"
-            ? "✚"
-            : item.category === "wildfire" || item.category === "fire"
-              ? "♨"
-              : "!");
-      if (item.kind === "vehicle") {
-        const position = marker.getLngLat();
-        moves.push({
-          marker,
-          from: [position.lng, position.lat],
-          to: [item.longitude, item.latitude],
-        });
-      } else marker.setLngLat([item.longitude, item.latitude]);
+      element.replaceChildren();
+      if (item.markerLabel !== undefined) {
+        element.textContent = item.markerLabel;
+      } else if (symbol || item.kind === "hospital") {
+        // Local SVGs provide distinct shapes without loading external icon services or HTML.
+        const icon = document.createElement("img");
+        icon.src = `/icons/response/${symbol || "hospital"}.svg`;
+        icon.alt = "";
+        icon.setAttribute("aria-hidden", "true");
+        element.append(icon);
+      } else {
+        element.textContent = ["wildfire", "fire"].includes(item.category) ? "♨" : "!";
+      }
+      if (symbol) element.dataset.vehicleType = symbol;
+      else delete element.dataset.vehicleType;
+      // Approved resources are static points; retain instances without interpolating synthetic travel.
+      marker.setLngLat([item.longitude, item.latitude]);
     }
-    // Retain marker instances so server position updates animate instead of blinking.
-    const started = performance.now();
-    function animate(timestamp: number) {
-      const progress = Math.min(1, (timestamp - started) / 1900);
-      for (const move of moves)
-        move.marker.setLngLat([
-          move.from[0] + (move.to[0] - move.from[0]) * progress,
-          move.from[1] + (move.to[1] - move.from[1]) * progress,
-        ]);
-      if (progress < 1) animation.current = requestAnimationFrame(animate);
-    }
-    if (moves.length) animation.current = requestAnimationFrame(animate);
-    return () => {
-      if (animation.current) cancelAnimationFrame(animation.current);
-    };
   }, [items, selectedId]);
   const west = Math.min(...items.map((item) => item.longitude));
   const east = Math.max(...items.map((item) => item.longitude));
@@ -199,9 +177,9 @@ export function IncidentMap({
         [west, south],
         [east, north],
       ],
-      { padding: 55, maxZoom: 14, duration: 0 },
+      { padding: { top: 55, right: 55, bottom: showLegend ? 160 : 55, left: 55 }, maxZoom: 14, duration: 0 },
     );
-  }, [ready, fitToItems, west, east, south, north]);
+  }, [ready, fitToItems, showLegend, west, east, south, north]);
   useEffect(() => {
     if (!map.current || !pin) return;
     const marker = new maplibregl.Marker({
@@ -321,34 +299,6 @@ export function IncidentMap({
         instance.removeSource("caller-accuracy");
     };
   }, [ready, callerLocation]);
-  useEffect(() => {
-    if (!ready || !map.current) return;
-    const data = {
-      type: "FeatureCollection" as const,
-      features: (routes || []).map((route) => ({
-        type: "Feature" as const,
-        properties: { id: route.id },
-        geometry: { type: "LineString" as const, coordinates: route.points },
-      })),
-    };
-    const source = map.current.getSource("response-routes") as
-      maplibregl.GeoJSONSource | undefined;
-    if (source) source.setData(data);
-    else {
-      map.current.addSource("response-routes", { type: "geojson", data });
-      map.current.addLayer({
-        id: "response-routes",
-        type: "line",
-        source: "response-routes",
-        paint: {
-          "line-color": "#50cdbd",
-          "line-width": 2,
-          "line-opacity": 0.7,
-          "line-dasharray": [3, 3],
-        },
-      });
-    }
-  }, [routes, ready]);
   return (
     <div
       className={`map-wrap ${compact ? "compact" : ""} ${revealLocation ? "call-location-map" : ""}`}
@@ -387,18 +337,6 @@ export function IncidentMap({
       {!revealLocation && showLegend && (
         <div className="map-legend">
           <span>
-            <i className="critical" />
-            Critical
-          </span>
-          <span>
-            <i className="high" />
-            High
-          </span>
-          <span>
-            <i className="moderate" />
-            Moderate
-          </span>
-          <span>
             <i className="resource" />
             Incident
           </span>
@@ -406,10 +344,12 @@ export function IncidentMap({
             <i className="hospital" />
             Hospital
           </span>
-          <span>
-            <i className="vehicle" />
-            Vehicle
-          </span>
+          {(["ambulance", "police", "fire", "rescue"] as const).map((symbol) => (
+            <span key={symbol}>
+              <Image className={`legend-vehicle vehicle-${symbol}`} src={`/icons/response/${symbol}.svg`} width={22} height={22} alt="" />
+              {vehicleSymbolLabels[symbol]}
+            </span>
+          ))}
         </div>
       )}
       {!items.length && !revealLocation && (

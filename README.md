@@ -2,7 +2,9 @@
 
 **SIMULATION (NOT FOR EMERGENCY USE)**
 
-Kontrol is a simulated 911 dispatcher co-pilot. Load a recorded call, let Kontrol locate the incident from the transcript, and select a call type before four agents draft a response. A dispatcher must approve the plan before simulated resources move. No real dispatch messages are sent.
+Kontrol is a dispatcher co-pilot supporting recorded audio and optional live inbound phone calls. The existing upload/batch transcription workflow remains intact. Configured live calls use Twilio browser audio and an independent OpenAI streaming transcription path, then join the same location review and four-agent workflow after hang-up. A dispatcher must approve the plan before assignment markers appear. No real dispatch messages are sent.
+
+For phone number provisioning, signed public ingress, browser answering, streaming transcription, and a real test-call checklist, see [Live inbound calls](backend/LIVE_CALLS.md). Phone calling is disabled by default and adds no credential requirement to the existing upload workflow.
 
 ## Run locally
 
@@ -12,17 +14,41 @@ Copy `.env.example` to `.env`, then run:
 docker compose up --build
 ```
 
-Open [Kontrol Command](http://localhost:3000/coordinator/calls). Load a sample call and wait for transcription. Kontrol automatically detects the spoken address, flies the map into the location, and drops the incident pin. Call type is the only required form input. Select **Start agents**, review the resulting plan, enter a decision note, and approve the simulated response. The Command map shows approved assignments and illustrative movement.
+Open [Kontrol Command](http://localhost:3000/coordinator/calls). Load a sample call and wait for transcription. Kontrol automatically detects the spoken address, flies the map into the location, and drops the incident pin. Call type is the only required form input. Select **Start agents**, review the resulting plan, enter a decision note, and approve the simulated response. The Command map displays stationary markers for the approved incident, assigned vehicles, and chosen hospitals. Approval does not animate travel, create arrivals, or automatically complete the response.
 
 Before starting agents, use **Edit address** to correct a street address, intersection, or exercise landmark, then select **Find location again**. The same button also retries the current lookup without editing. Successful lookups replay the city zoom and pin drop, including when the coordinates are unchanged. An unresolved correction removes the previous pin and keeps Start agents disabled. The original transcript and audio stay intact; address edits and lookup results are audited. Editing is unavailable after agents have started.
 
 To rerun an unapproved response, select **Back to call type** in the recording or response-plan review. This returns the same recording to the call-type form with its transcript and detected location intact. Choose a type and select **Start agents** to create a fresh workflow with new CREAO execution IDs. Returning alone makes no provider request. Previous reports, plans, outputs and errors remain in history; unfinished local stages are cancelled and late results are ignored. Approved or dispatched responses cannot be reopened. **Retry failed stage** in Agent Operations still resumes the existing remote execution and serves a different purpose.
 
-To remove an uploaded or sample recording, select it in Recorded Calls and choose **Delete recording**, then **Delete permanently**. This removes the private audio and call-queue entry. Existing reports, response plans, agent jobs, assignments and communication history remain; deletion does not cancel an ongoing response. Deletion is dispatcher-only, version-checked and audited. In-flight transcription results are discarded. If storage cleanup fails, the recording is immediately inaccessible and the worker retries file removal from a durable deletion marker.
+To remove an uploaded or sample recording, select it in Recorded Calls and choose **Delete recording**, then **Delete permanently**. This removes the private audio and call-queue entry. Existing reports, response plans, agent jobs, assignments remain; deletion does not cancel an ongoing response. Deletion is dispatcher-only, version-checked and audited. In-flight transcription results are discarded. If storage cleanup fails, the recording is immediately inaccessible and the worker retries file removal from a durable deletion marker.
 
-Both `CREAO_MODE=mock` and `TRANSCRIPTION_MODE=mock` work without credentials. Existing `.env` files retain their previous settings; set these two values to `mock` to run the credential-free exercise. Migrations and idempotent bootstrap run automatically. New installations start with an empty call queue and a fictional hospital/fleet network. Bundled audio needs no generation step.
+Both `CREAO_MODE=mock` and `TRANSCRIPTION_MODE=mock` work without credentials. Existing `.env` files retain their previous settings; set these two values to `mock` to run the credential-free exercise. Migrations and idempotent bootstrap run automatically. New installations start with empty calls, incidents, plans and hospitals. Mock mode seeds only six fleet units; live mode supplies those units when `DEMO_FLEET_ENABLED=true`. Bundled audio needs no generation step.
 
-The local application uses a built-in dispatcher identity, not a production login. The persisted role and URL prefix remain `coordinator` to preserve historical authorization. Resident routes and public submission, assistant, subscription, and update endpoints are retired. Historical tables and records are preserved.
+The local application uses a built-in dispatcher identity, not a production login. The persisted role and URL prefix remain `coordinator` to preserve historical authorization. Resident routes and public submission, assistant, subscription, and update endpoints are retired. Legacy schema tables remain for compatibility; the retired test dataset can be removed with the explicit cleanup command below.
+
+## Retired dataset cleanup
+
+Hospital Network, Communications and community Resources pages and their mutation routes are retired. Hospital destinations come from validated Hospital agent results. Bed availability and diversion stay unknown when not reported; approval creates no hospital reservations, responder messages, arrivals or completion events. The six-unit demo fleet and bundled call recordings remain available for a fallback demo. In mock mode a real facility reference is returned with unknown beds/diversion; it is not live hospital telemetry. The approval button remains available for `needs_information` results.
+
+For an existing installation, back up PostgreSQL first, pause workers and run the one-time cleanup after upgrading containers/migrations:
+
+```sh
+docker compose stop worker
+docker compose exec backend python -m app.cleanup_legacy
+docker compose start worker
+```
+
+The transaction removes legacy community resources, requests, updates, inventory, simulated messages, and workflows not attached to a non-sample call. Bundled recordings retain audio/transcripts and return to review when their old report is removed. Non-sample call workflows and their audit trail are preserved unless they still reference the retired SIM fleet; those obsolete responses are removed and their source calls return to review. Unreferenced `SIM-*` vehicles and fictional hospitals are deleted; retained hospitals have old capacity/occupancy/diversion cleared. Any legacy resource still referenced by a preserved call assignment is retained to protect that workflow. Startup never recreates the retired dataset. Re-running cleanup is safe immediately after migration, but it will also remove sample workflows created since the previous run.
+
+## Prepared judging plan
+
+Load exactly one saved fallback scenario without calling CREAO or transcription providers:
+
+```sh
+docker compose exec backend python -m app.prepared_plan
+```
+
+In live mode, enable `DEMO_FLEET_ENABLED=true`; AMB-01 and POL-01 must be available. The plan appears in Command Center → Decision queue and Response Plans → awaiting approval. It describes a Market & 8th collision with one reported injury, AMB-01, POL-01 and a provisional ZSFG destination. Prepared findings are marked as simulation, with unknown hospital capacity and illustrative coordinate-based travel estimates. Approval adds stationary markers and moves the saved plan into the approved group on Response Plans. Running the loader again returns the same plan, preserving any approval; it does not duplicate or reset it. The scenario is never created automatically at startup.
 
 ## Workflow and architecture
 
@@ -53,6 +79,8 @@ Starting a call creates one Report, Incident, and Plan atomically from server-ow
 Plan review shows four compact checks for incident location, patient count, reported hospital beds, and travel estimates. Explicit unmet requirements and known vehicle/diversion conflicts remain visible. Full constraints, agent narratives, assignment rationale, and transcript provenance are expandable; the saved output and approval rules are unchanged. Only exact repeated notes are deduplicated in the display.
 
 Agent responses remain strictly schema-validated even when CREAO surrounds its JSON result with progress prose. Ambiguous or malformed documents are rejected. Schema errors identify missing or invalid contract fields; formatting-only failures can resume the saved remote run after an adapter fix through **Retry failed stage**.
+
+Approved-response maps use distinct ambulance, police-car, fire-truck and rescue-unit symbols, plus hospital building markers. Filtering a response keeps its assigned vehicles and hospital destinations together; maps fit those locations without travel animations. Fleet cards use the same vehicle icons.
 
 The hospital comparison defaults to nearest first, with numbered map pins matching the list. Distances are calculated from incident and hospital coordinates and labeled **straight-line miles**, independently of agent prose or travel estimates. Sort by nearest, farthest, or the agent's explicit recommendation list. Pin numbers always retain proximity order, and selecting a pin or list entry highlights the same hospital. Agent choice, estimated travel method, unknown beds/diversion, and expanded suitability/source details stay separate. Proximity does not imply clinical suitability or a confirmed receiving destination.
 
@@ -123,7 +151,7 @@ Use the configured PostgreSQL password if different from the example. These test
 
 ## Limitations
 
-This version processes completed recordings, not live calls. That sequencing is a demo choice, not a model of a particular emergency center's procedures. It does not provide medical instructions, validated emergency addresses, real caller location, CAD integration, or real dispatch. Vehicle movement and ETAs are illustrative coordinate calculations. Hospital destinations are advisory and do not establish patient disposition or verified capacity.
+Uploaded recordings still use completed-file transcription. Live inbound phone calls are supported through the optional configured provider integration, with agent start restricted to ended/finalized calls. This sequencing is not a model of a particular emergency center's procedures. The app does not provide medical instructions, validated emergency addresses, real caller location, CAD integration, or real dispatch. Response markers are stationary. ETAs are advisory estimates, with coordinate-based fallbacks when needed. Hospital destinations are advisory and do not establish patient disposition or verified capacity.
 
 The application is for trusted local fictional exercises. Real recordings, production authentication, retention/deletion policy, center-specific protocols, and external integrations require a separate operational-pilot design. No fictional data should be used for real-world emergency guidance.
 

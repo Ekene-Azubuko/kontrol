@@ -44,9 +44,16 @@ def intake(payload: dict) -> IntakeResult:
 def hospital(payload: dict) -> HospitalResult:
     """Rank supplied mock hospitals while preserving unknown capacity."""
     agent_input = payload["agent_input"]
-    rows = payload["hospitals"]
+    rows = payload["hospitals"] or [{
+        "name": "Zuckerberg San Francisco General Hospital and Trauma Center",
+        "location": "1001 Potrero Avenue, San Francisco, CA 94110",
+        "latitude": 37.7568103, "longitude": -122.4052532,
+        "capabilities": ["emergency_department", "trauma"],
+        "available_beds": None, "diversion": None,
+        "travel_minutes": None, "source_urls": ["https://zsfg.ucsf.edu/"],
+    }]
     candidates = [row for row in rows if not row["diversion"]]
-    candidates.sort(key=lambda row: row["travel_minutes"])
+    candidates.sort(key=lambda row: row["travel_minutes"] or float("inf"))
     hospitals = [
         {
             "name": row["name"],
@@ -57,9 +64,9 @@ def hospital(payload: dict) -> HospitalResult:
             "available_beds": row["available_beds"],
             "diversion_status": row["diversion"],
             "estimated_travel_minutes": row["travel_minutes"],
-            "travel_time_method": "coordinate_estimate",
-            "source_urls": [],
-            "suitability_notes": "Configured mock facility with relevant emergency services.",
+            "travel_time_method": "coordinate_estimate" if row["travel_minutes"] else "unavailable",
+            "source_urls": row.get("source_urls", []),
+            "suitability_notes": "Offline reference facility; capacity and diversion are unknown.",
         }
         for row in candidates[:8]
     ]

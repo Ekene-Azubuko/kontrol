@@ -11,6 +11,7 @@ import { CallLocation } from "./call-location";
 import { PlanDetail } from "./response-plans";
 import { CallReopen } from "./call-reopen";
 import { CallDelete } from "./call-delete";
+import { LiveCallControls, PhoneConnection } from "./live-phone";
 
 /** Fetch protected audio with credentials and release the browser's private copy on cleanup. */
 function CallAudio({ id }: { id: string }) {
@@ -138,6 +139,7 @@ function CallReview({
             busy ||
             locationBlocked ||
             !category ||
+            (call.source === "live" && (!call.live?.ended_at || !call.live?.finalized_at)) ||
             location?.status !== "resolved"
           }
         >
@@ -149,7 +151,7 @@ function CallReview({
 }
 
 /** Keep simulated recorded calls and their human review in one authenticated workspace. */
-export function Calls() {
+function CallsWorkspace() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const calls = useData<RecordedCall[]>("/calls");
@@ -165,7 +167,7 @@ export function Calls() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const call = detail.data;
-  const transcript = call?.reviewed_transcript ?? call?.original_transcript;
+  const transcript = call?.live?.resolution_text ?? call?.reviewed_transcript ?? call?.original_transcript;
   /** Queue an upload, sample or retry, then refresh the selected private call. */
   async function perform(path: string, body?: FormData) {
     setBusy(true);
@@ -183,10 +185,11 @@ export function Calls() {
   return (
     <>
       <PageHeading
-        eyebrow="RECORDED-CALL EXERCISE"
-        title="Recorded Calls"
-        subtitle="Review a recording, check the location, and choose a call type."
+        eyebrow="CALL INTAKE"
+        title="Calls"
+        subtitle="Answer a live call or review a recording, then choose a call type."
       />
+      <PhoneConnection />
       <section className="call-intake-tools" aria-label="Add a recording">
         <div className="call-upload-heading">
           <h2>Add a recording</h2>
@@ -256,7 +259,7 @@ export function Calls() {
                     (sample) => sample.key === item.sample_key,
                   )?.title ||
                     item.sample_key ||
-                    "Uploaded recording"}
+                    (item.source === "live" ? `Phone call · ${item.live?.caller || "Unknown caller"}` : "Uploaded recording")}
                 </strong>
                 <small>{new Date(item.received_at).toLocaleString()}</small>
                 <div className="call-row-meta">
@@ -314,7 +317,8 @@ export function Calls() {
               </Empty>
             ) : (
               <Fragment key={call.id}>
-                <CallAudio id={call.id} />
+                {call.source === "live" && <LiveCallControls key={call.id} call={call} />}
+                {call.has_audio !== false && <CallAudio id={call.id} />}
                 <p className="call-recording-meta">
                   <Badge
                     value={
@@ -323,7 +327,7 @@ export function Calls() {
                         : call.status
                     }
                   />{" "}
-                  · {Math.round(call.duration_seconds)} seconds · SIMULATION
+                  · {Math.round(call.duration_seconds)} seconds {call.simulation && "· SIMULATION"}
                 </p>
                 {transcript && (
                   <details className="call-transcript" open>
@@ -397,4 +401,10 @@ export function Calls() {
       />
     </>
   );
+}
+
+/** Reset call selection when a persistent phone notification opens a different URL-linked call. */
+export function Calls() {
+  const params = useSearchParams();
+  return <CallsWorkspace key={params.get("call") || "queue"} />;
 }

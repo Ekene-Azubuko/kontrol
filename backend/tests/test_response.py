@@ -5,10 +5,8 @@ import pytest
 from sqlalchemy import select
 from app import worker
 from call_helpers import submit_call
-from app.config import settings
 from app.db import now
-from app.dispatch_simulation import dispatch_tick
-from app.models import AgentRun, DispatchAssignment, EmergencyVehicle, Hospital, Incident, Report
+from app.models import AgentRun, DispatchAssignment, EmergencyVehicle, Hospital, Report
 from app.response_services import validate_stage
 from test_workflow import RESIDENT, COORDINATOR, report_data  # noqa: F401
 
@@ -39,15 +37,14 @@ def decide(client, plan, action="approve"):
     )
 
 
-def test_full_response_and_exactly_once_arrival(system, monkeypatch):
-    """Require approval, reserve beds, move vehicles, admit patients and release every unit."""
+def test_approval_keeps_static_assignments_without_synthetic_arrivals(system, monkeypatch):
+    """A future worker heartbeat must not move approved vehicles, admit patients or auto-complete the plan."""
     client, factory = system
-    monkeypatch.setattr(settings, "dispatch_stage_seconds", 1)
     baseline = client.get("/hospitals", headers=COORDINATOR).json()
     plan = generated_plan(client)
     assert plan["feasible"] and len(plan["assignments"]) == 2
     assert client.get("/dispatches", headers=COORDINATOR).json() == []
-    assert client.get("/communications", headers=COORDINATOR).json() == []
+    assert client.get("/communications", headers=COORDINATOR).status_code == 404
     assert all(v["status"] == "available" for v in client.get("/vehicles", headers=COORDINATOR).json())
     assert (
         client.post(
@@ -60,44 +57,43 @@ def test_full_response_and_exactly_once_arrival(system, monkeypatch):
     approved = decide(client, plan)
     assert approved.status_code == 200, approved.text
     assert decide(client, plan).status_code == 409
-    assert sum(h["reserved_beds"] for h in client.get("/hospitals", headers=COORDINATOR).json()) == 2
+    assert sum(h["reserved_beds"] for h in client.get("/hospitals", headers=COORDINATOR).json()) == 0
     assert sum(h["occupied_beds"] for h in client.get("/hospitals", headers=COORDINATOR).json()) == sum(
         h["occupied_beds"] for h in baseline
     )
-    assert len(client.get("/communications", headers=COORDINATOR).json()) == 4
-    current = now()
+    assert client.get("/communications", headers=COORDINATOR).status_code == 404
+    positions = {v["id"]: (v["latitude"], v["longitude"]) for v in client.get("/vehicles", headers=COORDINATOR).json()}
     with factory() as db:
-        moving = db.scalar(select(DispatchAssignment).where(DispatchAssignment.hospital_id.is_not(None)))
-        unit_id = moving.vehicle_id
-        initial = (db.get(EmergencyVehicle, unit_id).latitude, db.get(EmergencyVehicle, unit_id).longitude)
-        dispatch_tick(db, current + timedelta(seconds=1.1))
+        for dispatch in db.scalars(select(DispatchAssignment)):
+            dispatch.stage_started_at = now() - timedelta(days=1)
         db.commit()
-        assert db.get(EmergencyVehicle, unit_id).status == "en_route"
-        dispatch_tick(db, current + timedelta(seconds=1.6))
-        db.commit()
-        assert (
-            db.get(EmergencyVehicle, unit_id).latitude,
-            db.get(EmergencyVehicle, unit_id).longitude,
-        ) != initial
-        for step, status in [
-            (2.2, "on_scene"),
-            (3.3, "transporting"),
-            (4.4, "completed"),
-            (5.5, "available"),
-        ]:
-            dispatch_tick(db, current + timedelta(seconds=step))
-            db.commit()
-            assert db.get(EmergencyVehicle, unit_id).status == status
-            if status == "transporting":
-                assert db.get(Incident, plan["incident_id"]).response_status == "transporting"
-        dispatch_tick(db, current + timedelta(seconds=100))
-        db.commit()
+
+    class StopWorker(BaseException):
+        """Stop after one real maintenance iteration without swallowing the test signal."""
+
+    def stop_after_heartbeat(_):
+        """Exit before a second heartbeat or any wall-clock waiting."""
+        raise StopWorker()
+
+    from app import call_worker, live_worker
+    with monkeypatch.context() as patch:
+        patch.setattr(worker, "now", lambda: now() + timedelta(days=1))
+        patch.setattr(worker, "process_one", lambda: False)
+        patch.setattr(call_worker, "process_one_call", lambda: False)
+        patch.setattr(live_worker, "live_maintenance", lambda: False)
+        patch.setattr(worker.time, "sleep", stop_after_heartbeat)
+        with pytest.raises(StopWorker):
+            worker.main()
+    fleet = client.get("/vehicles", headers=COORDINATOR).json()
+    assert {v["id"]: (v["latitude"], v["longitude"]) for v in fleet} == positions
+    assignments = client.get("/dispatches", headers=COORDINATOR).json()
+    assert all(d["status"] == "assigned" and d["progress"] == 0 and d["released_at"] is None for d in assignments)
     final = client.get("/hospitals", headers=COORDINATOR).json()
-    assert sum(h["occupied_beds"] for h in final) == sum(h["occupied_beds"] for h in baseline) + 2
+    assert sum(h["occupied_beds"] for h in final) == sum(h["occupied_beds"] for h in baseline)
     assert sum(h["reserved_beds"] for h in final) == 0
-    assert client.get(f"/response-plans/{plan['id']}", headers=COORDINATOR).json()["status"] == "completed"
-    assert client.get("/reports", headers=COORDINATOR).json()[0]["status"] == "completed"
-    assert all(v["status"] == "available" for v in client.get("/vehicles", headers=COORDINATOR).json())
+    assert client.get(f"/response-plans/{plan['id']}", headers=COORDINATOR).json()["status"] == "approved"
+    assert client.get("/reports", headers=COORDINATOR).json()[0]["status"] == "assigned"
+    assert client.get("/communications", headers=COORDINATOR).status_code == 404
     assert decide(client, approved.json(), "revise").status_code == 409
 
 
@@ -132,7 +128,7 @@ def test_revision_rejection_and_reset_keep_history(system):
     second = next(p for p in plans if p["revision"] == 2)
     assert next(p for p in plans if p["id"] == first["id"])["status"] == "rejected"
     assert decide(client, second, "reject").status_code == 200
-    assert not client.get("/communications", headers=COORDINATOR).json()
+    assert client.get("/communications", headers=COORDINATOR).status_code == 404
     third = generated_plan(client)
     assert decide(client, third).status_code == 200
     assert client.post("/response-demo", headers=RESIDENT, json={"action": "reset"}).status_code == 403
@@ -144,7 +140,7 @@ def test_revision_rejection_and_reset_keep_history(system):
             h.reserved_beds == 0 and h.occupied_beds == h.baseline_occupied
             for h in db.scalars(select(Hospital))
         )
-    assert client.get("/communications", headers=COORDINATOR).json()
+    assert client.get("/communications", headers=COORDINATOR).status_code == 404
     assert client.post("/response-demo", headers=COORDINATOR, json={"action": "start"}).status_code == 200
 
 

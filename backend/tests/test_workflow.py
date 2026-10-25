@@ -11,7 +11,7 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from app import worker
 from call_helpers import submit_call
-from app.models import AgentRun, Resource
+from app.models import AgentRun
 from app.response_schemas import IntakeResult as Assessment
 from app.creao import MockAdapter
 from app.config import settings
@@ -60,8 +60,7 @@ def test_private_reports_and_role_boundaries(system):
     report = client.get("/reports", headers=COORDINATOR).json()[0]
     for path in ["/reports", f"/reports/{report['id']}", "/calls", "/incidents",
                  f"/incidents/{incident['id']}", "/agents", "/activity", "/simulation",
-                 "/response-plans", "/hospitals", "/vehicles", "/dispatches", "/communications",
-                 "/resource-requests", "/resources"]:
+                 "/response-plans", "/hospitals", "/vehicles", "/dispatches"]:
         assert client.get(path, headers=RESIDENT).status_code == 403
     assert client.get("/incidents", headers={"X-Role": "coordinator"}).status_code == 401
     for path in ["/updates", "/subscriptions", "/assistant"]:
@@ -144,50 +143,15 @@ def test_unknown_agent_evidence_fails_closed(system, monkeypatch):
     assert client.get(f"/incidents/{incident['id']}", headers=COORDINATOR).json()["status"] == "needs_review"
 
 
-def test_resource_visibility_capacity_and_double_approval(system):
-    """Ensure private resources stay private and approved capacity cannot be consumed twice."""
-    client, factory = system
-    incident = submit(client)
-    with factory() as db:
-        resource = Resource(
-            name="Private shelter",
-            category="shelter",
-            location="Exercise",
-            latitude=0,
-            longitude=0,
-            capacity=10,
-            occupancy=5,
-            published=False,
-        )
-        db.add(resource)
-        db.commit()
-        resource_id = resource.id
-    assert client.get("/resources", headers=RESIDENT).status_code == 403
-    proposal = client.post(
-        "/resource-requests",
-        headers=COORDINATOR,
-        json={
-            "incident_id": incident["id"],
-            "resource_id": resource_id,
-            "quantity": 3,
-            "rationale": "Exercise reservation",
-        },
-    ).json()
-    path = f"/resource-requests/{proposal['id']}/approve"
-    assert client.post(path, headers=RESIDENT).status_code == 403
-    assert client.post(path, headers=COORDINATOR).status_code == 200
-    assert client.post(path, headers=COORDINATOR).status_code == 409
-    proposal = client.post(
-        "/resource-requests",
-        headers=COORDINATOR,
-        json={
-            "incident_id": incident["id"],
-            "resource_id": resource_id,
-            "quantity": 3,
-            "rationale": "Over capacity",
-        },
-    ).json()
-    assert client.post(f"/resource-requests/{proposal['id']}/approve", headers=COORDINATOR).status_code == 409
+def test_retired_resource_and_communications_routes_are_unavailable(system):
+    """Retired workflows cannot repopulate removed data, regardless of caller role."""
+    client, _ = system
+    for headers in [COORDINATOR, RESIDENT]:
+        for path in ["/resources", "/resource-requests", "/communications"]:
+            assert client.get(path, headers=headers).status_code == 404
+            assert client.post(path, headers=headers, json={}).status_code == 404
+        assert client.patch("/resources/missing", headers=headers, json={}).status_code == 404
+        assert client.post("/communications/missing/acknowledge", headers=headers).status_code == 404
 
 
 def test_retired_public_mutations_are_unavailable(system):

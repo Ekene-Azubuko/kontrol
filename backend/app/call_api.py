@@ -122,14 +122,14 @@ def call_detail(call_id: str, db: DB, user: Coordinator):
     call = require_record(db, Call, call_id)
     if call.status == "deleted":
         raise HTTPException(404, "Recording not found")
-    return call_record(db, call)
+    return call_record(db, call, include_segments=True)
 
 
 @router.get("/{call_id}/audio")
 def call_audio(call_id: str, db: DB, user: Coordinator):
     """Serve authenticated audio without exposing private storage paths."""
     call = require_record(db, Call, call_id)
-    if call.status == "deleted":
+    if call.status == "deleted" or not call.audio_key:
         raise HTTPException(404, "Recording not found")
     path = audio_path(call.audio_key)
     if not path.is_file():
@@ -188,7 +188,7 @@ def retry(call_id: str, db: DB, user: Coordinator):
     call = db.scalar(select(Call).where(Call.id == call_id).with_for_update())
     if not call:
         raise HTTPException(404, "Call not found")
-    if call.status != "failed" or call.attempts >= 3 or call.report_id:
+    if call.source != "recording" or call.status != "failed" or call.attempts >= 3 or call.report_id:
         raise HTTPException(409, "Only failed calls with fewer than three attempts can retry.")
     call.status, call.claim_token, call.lease_expires_at = "queued", None, None
     db.add(
